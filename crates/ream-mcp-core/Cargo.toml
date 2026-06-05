@@ -1,0 +1,38 @@
+[package]
+name = "ream-mcp-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure Rust core for Ream MCP — chunker, store, search, embeddings, traceability."
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+# SQLite via bundled sqlite3 + FTS5; `blob` feature for raw embedding storage.
+rusqlite = { version = "0.32", features = ["bundled", "blob"] }
+# Vector accelerator. ALPHA (0.1.10-alpha.3) — the BM25-only fallback is the
+# load-bearing path. Statically linked via `cc`, no runtime .so/.dll needed.
+sqlite-vec = "0.1"
+# Markdown AST walker.
+pulldown-cmark = { version = "0.13", default-features = false }
+# Embeddings via ONNX runtime + BAAI/bge-small-en-v1.5.
+fastembed = "5"
+# SHA-256 for stable chunk ids — `{file_hash[..8]}:{heading_path}`.
+sha2 = "0.10"
+# Filesystem walker for the corpus + traceability scanner.
+walkdir = "2"
+# Lazy init of the embeddings model.
+once_cell = "1"
+# Structured errors.
+thiserror = "2"
+# JSON shape for NAPI bridge payloads.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Async runtime — embeddings + indexer run in `spawn_blocking` from the NAPI
+# layer; we only need the runtime + sync primitives here.
+tokio = { version = "1", features = ["rt", "sync", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"
