@@ -589,6 +589,6 @@ function firstLine(s: string): string {
  * Test-only helper: drop every cached project. Production callers
  * should rely on tsconfig-mtime invalidation instead.
  */
-export function _resetCache(): void {
+export function resetCache(): void {
 	CACHE.clear();
 }

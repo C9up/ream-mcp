@@ -28,9 +28,9 @@ import { fileURLToPath } from "node:url";
  * Caches the result for the test-process lifetime (the mount mode
  * does not change mid-run).
  */
-let _tmpExecCache: boolean | null = null;
+let tmpExecCache: boolean | null = null;
 export function canExecInTmp(): boolean {
-	if (_tmpExecCache !== null) return _tmpExecCache;
+	if (tmpExecCache !== null) return tmpExecCache;
 	const probeDir = mkdtempSync(join(tmpdir(), "ream-mcp-exec-probe-"));
 	const probePath = join(probeDir, "probe.sh");
 	try {
@@ -40,9 +40,9 @@ export function canExecInTmp(): boolean {
 			stdio: "ignore",
 			shell: false,
 		});
-		_tmpExecCache = result.error === undefined && result.status === 0;
+		tmpExecCache = result.error === undefined && result.status === 0;
 	} catch {
-		_tmpExecCache = false;
+		tmpExecCache = false;
 	} finally {
 		try {
 			rmSync(probeDir, { recursive: true, force: true });
@@ -50,12 +50,12 @@ export function canExecInTmp(): boolean {
 			// best-effort cleanup; ignore so the probe result still propagates
 		}
 	}
-	if (!_tmpExecCache) {
+	if (!tmpExecCache) {
 		process.stderr.write(
 			"[ream-mcp tests] system tmpdir does not permit executing files (likely `noexec` mount); skipping cli-runner / generate-* integration suites.\n",
 		);
 	}
-	return _tmpExecCache;
+	return tmpExecCache;
 }
 
 /**

@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { dispatchQuality } from "../../src/tools/quality.js";
-import { _resetCache } from "../../src/util/ts-static-parser.js";
+import { resetCache } from "../../src/util/ts-static-parser.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, "..", "fixtures", "introspect-app");
@@ -38,7 +38,7 @@ interface ReportShape {
 }
 
 beforeAll(() => {
-	_resetCache();
+	resetCache();
 });
 
 describe("quality > package_report", () => {
