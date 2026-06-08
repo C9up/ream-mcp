@@ -37,7 +37,13 @@ beforeEach(() => {
 
 afterEach(() => {
 	delete process.env.REAM_DATABASE_URL;
-	rmSync(tmpDbDir, { recursive: true, force: true });
+	// win32: atlas's sqlite handle may still hold test.db open (unlink -> EBUSY);
+	// the assertions already ran, so cleanup is best-effort (OS reclaims tmpdir).
+	try {
+		rmSync(tmpDbDir, { recursive: true, force: true });
+	} catch {
+		// ignore win32 file lock
+	}
 	if (SAVED_REAM_ENV === undefined) delete process.env.REAM_ENV;
 	else process.env.REAM_ENV = SAVED_REAM_ENV;
 	if (SAVED_NODE_ENV === undefined) delete process.env.NODE_ENV;
