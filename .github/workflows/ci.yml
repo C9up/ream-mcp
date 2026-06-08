@@ -68,6 +68,10 @@ jobs:
       - name: Vitest
         if: matrix.test
         timeout-minutes: 10
+        # Disable embeddings: their lazy fastembed/ONNX-runtime download (~300 MB)
+        # stalls on the win32 runner and hangs the suite. BM25 fallback is tested.
+        env:
+          REAM_MCP_DISABLE_EMBEDDINGS: '1'
         run: pnpm exec vitest run --reporter=default --reporter=json --outputFile=test-results.json
         shell: bash
 
