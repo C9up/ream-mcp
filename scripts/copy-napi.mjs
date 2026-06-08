@@ -1,17 +1,28 @@
 // Copies the cargo-built `cdylib` for `ream-mcp-napi` into a
 // platform-suffixed `.node` file at the package root, where
-// `index.js` expects to load it. Mirrors `packages/atom/scripts/
-// copy-napi.mjs`.
+// `index.js` expects to load it.
 
 import { copyFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { arch, platform } from "node:process";
+import { arch, env, platform } from "node:process";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
+const CRATE = "ream_mcp_napi";
+const TAG = "[ream-mcp:napi]";
 
-const suffixMap = {
+// Cross-compile aware: set CARGO_BUILD_TARGET (e.g. x86_64-apple-darwin on an
+// arm64 runner so we don't depend on the scarce macos-13 Intel runners) and we
+// read target/<triple>/release. Unset = host platform / target/release.
+const tripleMap = {
+	"x86_64-unknown-linux-gnu": { suffix: "linux-x64-gnu", os: "linux" },
+	"aarch64-unknown-linux-gnu": { suffix: "linux-arm64-gnu", os: "linux" },
+	"x86_64-apple-darwin": { suffix: "darwin-x64", os: "darwin" },
+	"aarch64-apple-darwin": { suffix: "darwin-arm64", os: "darwin" },
+	"x86_64-pc-windows-msvc": { suffix: "win32-x64-msvc", os: "win32" },
+};
+const hostSuffixMap = {
 	"linux-x64": "linux-x64-gnu",
 	"linux-arm64": "linux-arm64-gnu",
 	"darwin-x64": "darwin-x64",
@@ -19,34 +30,39 @@ const suffixMap = {
 	"win32-x64": "win32-x64-msvc",
 };
 
-const suffix = suffixMap[`${platform}-${arch}`];
-if (!suffix) {
-	throw new Error(
-		`[ream-mcp:napi] unsupported platform/arch: ${platform}-${arch}`,
-	);
+const triple = env.CARGO_BUILD_TARGET ?? "";
+let suffix;
+let os;
+let releaseDir;
+if (triple) {
+	const entry = tripleMap[triple];
+	if (!entry) throw new Error(`${TAG} unsupported CARGO_BUILD_TARGET: ${triple}`);
+	suffix = entry.suffix;
+	os = entry.os;
+	releaseDir = join(root, "target", triple, "release");
+} else {
+	suffix = hostSuffixMap[`${platform}-${arch}`];
+	os = platform;
+	releaseDir = join(root, "target", "release");
+	if (!suffix) {
+		throw new Error(`${TAG} unsupported platform/arch: ${platform}-${arch}`);
+	}
 }
 
-// Cargo emits the `.dylib` / `.so` / `.dll` under `target/release/`
-// using the crate name with its dash-to-underscore conversion. The
-// Cargo.toml `target` is rooted at the package — `target` here is
-// `packages/ream-mcp/target/`.
 const candidates =
-	platform === "win32"
-		? [
-				join(root, "target", "release", "ream_mcp_napi.dll"),
-				join(root, "target", "release", "libream_mcp_napi.dll"),
-			]
-		: platform === "darwin"
-			? [join(root, "target", "release", "libream_mcp_napi.dylib")]
-			: [join(root, "target", "release", "libream_mcp_napi.so")];
+	os === "win32"
+		? [join(releaseDir, `${CRATE}.dll`), join(releaseDir, `lib${CRATE}.dll`)]
+		: os === "darwin"
+			? [join(releaseDir, `lib${CRATE}.dylib`)]
+			: [join(releaseDir, `lib${CRATE}.so`)];
 
 const source = candidates.find((candidate) => existsSync(candidate));
 if (!source) {
 	throw new Error(
-		`[ream-mcp:napi] native library not found. Looked for:\n${candidates.map((p) => `- ${p}`).join("\n")}\nDid \`cargo build --release -p ream-mcp-napi\` succeed?`,
+		`${TAG} native library not found. Looked for:\n${candidates.map((p) => `- ${p}`).join("\n")}`,
 	);
 }
 
 const target = join(root, `index.${suffix}.node`);
 copyFileSync(source, target);
-process.stderr.write(`[ream-mcp:napi] copied ${source} -> ${target}\n`);
+process.stderr.write(`${TAG} copied ${source} -> ${target}\n`);
