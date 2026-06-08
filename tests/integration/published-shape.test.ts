@@ -100,9 +100,12 @@ describe("@c9up/ream-mcp published shape", () => {
 	});
 
 	it("exports the 3 publishConfig sub-paths and every advertised target lands in the tarball", () => {
+		// `--force-local` on win32: GNU tar otherwise reads the `C:` in a Windows
+		// path as a remote host (`host:path`) and fails with "Cannot connect to C:".
+		const tarLocal = process.platform === "win32" ? ["--force-local"] : [];
 		const pkgJsonRaw = execFileSync(
 			"tar",
-			["-xzOf", tarballPath, "package/package.json"],
+			[...tarLocal, "-xzOf", tarballPath, "package/package.json"],
 			{ encoding: "utf8" },
 		);
 		const parsed: unknown = JSON.parse(pkgJsonRaw);
@@ -118,7 +121,7 @@ describe("@c9up/ream-mcp published shape", () => {
 		]);
 
 		// AC5 — every advertised import + types target lives in the tarball
-		const tarList = execFileSync("tar", ["-tzf", tarballPath], {
+		const tarList = execFileSync("tar", [...tarLocal, "-tzf", tarballPath], {
 			encoding: "utf8",
 		})
 			.split("\n")
