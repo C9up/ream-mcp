@@ -56,7 +56,9 @@ function spawnServer(): {
 	child: ChildProcessWithoutNullStreams;
 	rpc: StdioRpc;
 } {
-	const tsx = join(HERE, "..", "..", "..", "..", "node_modules", ".bin", "tsx");
+	// Resolve tsx from this package's own node_modules so the test works both
+	// in the monorepo workspace and in a standalone (published-repo) CI checkout.
+	const tsx = join(HERE, "..", "..", "node_modules", ".bin", "tsx");
 	const child = spawn(tsx, [BIN_TS], {
 		stdio: ["pipe", "pipe", "pipe"],
 		env: { ...process.env, REAM_PROJECT_ROOT: "/tmp/dummy-root" },

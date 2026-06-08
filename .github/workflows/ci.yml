@@ -55,6 +55,10 @@ jobs:
         env:
           CARGO_BUILD_TARGET: ${{ matrix.target }}
 
+      - name: Build TypeScript (dist/)
+        if: matrix.test
+        run: pnpm build
+
       - name: Vitest
         if: matrix.test
         run: pnpm exec vitest run --reporter=default --reporter=json --outputFile=test-results.json
