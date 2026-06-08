@@ -68,7 +68,9 @@ jobs:
       - name: Vitest
         if: matrix.test
         timeout-minutes: 10
-        run: pnpm exec vitest run --reporter=default --reporter=json --outputFile=test-results.json
+        # `hanging-process` reporter prints the open handles/requests keeping the
+        # process alive when vitest can't exit — diagnostic for the win32 hang.
+        run: pnpm exec vitest run --reporter=default --reporter=hanging-process --reporter=json --outputFile=test-results.json
         shell: bash
 
       - name: Smoke gate — tests ran AND some passed (Linux/macOS)
