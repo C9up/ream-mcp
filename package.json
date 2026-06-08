@@ -1,0 +1,90 @@
+{
+	"name": "@c9up/ream-mcp",
+	"version": "0.1.3",
+	"description": "Ream MCP server — agent-ready framework assistant (docs, introspection, actions, BMAD).",
+	"license": "MIT",
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		},
+		"./napi": {
+			"import": "./index.js",
+			"types": "./index.d.ts"
+		},
+		"./util/project-root": {
+			"types": "./src/util/project-root.ts",
+			"import": "./src/util/project-root.ts"
+		}
+	},
+	"bin": {
+		"ream-mcp": "dist/index.js",
+		"ream-mcp-reindex": "dist/cli/reindex.js"
+	},
+	"files": [
+		"dist",
+		"index.*.node",
+		"index.d.ts",
+		"index.js",
+		"scripts",
+		"src"
+	],
+	"scripts": {
+		"build:rust": "cargo build --release -p ream-mcp-napi",
+		"build:napi": "pnpm build:rust && node scripts/copy-napi.mjs",
+		"build:ts": "tsc",
+		"build": "pnpm build:napi && pnpm build:ts",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:rust": "cargo test -p ream-mcp-core",
+		"lint": "biome check src/ tests/",
+		"test:coverage": "vitest run --coverage"
+	},
+	"publishConfig": {
+		"main": "./dist/index.js",
+		"types": "./dist/index.d.ts",
+		"exports": {
+			".": {
+				"types": "./dist/index.d.ts",
+				"import": "./dist/index.js"
+			},
+			"./napi": {
+				"import": "./index.js",
+				"types": "./index.d.ts"
+			},
+			"./util/project-root": {
+				"types": "./dist/util/project-root.d.ts",
+				"import": "./dist/util/project-root.js"
+			}
+		},
+		"access": "public"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"ts-morph": "^28.0.0"
+	},
+	"peerDependencies": {
+		"@c9up/atlas": "*"
+	},
+	"peerDependenciesMeta": {
+		"@c9up/atlas": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@c9up/atlas": "^0.1.0",
+		"@types/node": "^22.0.0",
+		"typescript": "^6.0.2",
+		"vitest": "^4.1.2"
+	},
+	"engines": {
+		"node": ">=22.0.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/C9up/ream-mcp.git"
+	}
+}
