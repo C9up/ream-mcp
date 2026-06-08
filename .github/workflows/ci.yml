@@ -49,6 +49,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.suffix }}
+          cache-on-failure: true
 
       - name: Install dependencies
         run: pnpm install
@@ -66,6 +67,7 @@ jobs:
 
       - name: Vitest
         if: matrix.test
+        timeout-minutes: 10
         run: pnpm exec vitest run --reporter=default --reporter=json --outputFile=test-results.json
         shell: bash
 
@@ -135,6 +137,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: cargo-tests
+          cache-on-failure: true
       - run: cargo test --workspace
 
   # Publish job — gated on workflow_dispatch (manual maintainer trigger).

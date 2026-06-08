@@ -80,6 +80,10 @@ let child: ChildProcessWithoutNullStreams | undefined;
 let rpc: StdioRpc | undefined;
 
 beforeEach(async () => {
+	// Belt-and-suspenders with `describeServer`: never spawn the server child on
+	// win32, where a successfully-booted child isn't reliably reaped and keeps
+	// vitest's process alive (open-handle hang at exit).
+	if (process.platform === "win32") return;
 	const spawned = spawnServer();
 	child = spawned.child;
 	rpc = spawned.rpc;
