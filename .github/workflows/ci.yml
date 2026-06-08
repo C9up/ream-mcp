@@ -143,6 +143,10 @@ jobs:
           key: cargo-tests
           cache-on-failure: true
       - run: cargo test --workspace
+        # Disable embeddings here too: an indexer test calls embed_batch, which
+        # lazily downloads the ONNX runtime (~300MB) and stalls on the runner.
+        env:
+          REAM_MCP_DISABLE_EMBEDDINGS: '1'
 
   # Publish job — gated on workflow_dispatch (manual maintainer trigger).
   # Requires NPM_TOKEN secret + a v<MAJOR>.<MINOR>.<PATCH> tag at HEAD matching
