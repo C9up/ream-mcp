@@ -25,7 +25,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(workDir, { recursive: true, force: true });
+	// Best-effort: the indexer's SQLite handle stays open in the native store
+	// cache, locking index.sqlite on Windows (unlink -> EBUSY). The assertions
+	// already ran; let the OS reclaim the tmpdir instead of failing teardown.
+	try {
+		rmSync(workDir, { recursive: true, force: true });
+	} catch {
+		// win32 file lock — ignore.
+	}
 	if (envBackup === undefined) {
 		delete process.env.REAM_MCP_EMBED_CACHE_DIR;
 	} else {

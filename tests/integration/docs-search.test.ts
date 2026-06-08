@@ -54,11 +54,15 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(workDir, { recursive: true, force: true });
+	// The indexer's SQLite handle stays open in the native store cache, so on
+	// Windows the index.sqlite file is locked and unlink throws EBUSY. The search
+	// assertions have already run; cleanup is best-effort (the OS reclaims the
+	// tmpdir), so swallow the teardown error rather than fail the test.
 	try {
+		rmSync(workDir, { recursive: true, force: true });
 		execSync(`rm -rf ${join(workDir, ".ream-mcp")}`);
 	} catch {
-		// Already cleaned by rmSync.
+		// Already cleaned, or win32 file lock — ignore.
 	}
 	if (envBackup === undefined) {
 		delete process.env.REAM_MCP_EMBED_CACHE_DIR;

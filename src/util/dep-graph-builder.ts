@@ -53,14 +53,15 @@ export function buildDepGraph(
 	for (const p of packages) byName.set(p.name, p);
 
 	const fileToPackage = (filePath: string): string | null => {
-		// `p.dir` is forward-slash normalised (see package-walker) and ts-morph's
-		// `getFilePath()` is too, but a resolver-built `targetPath` can carry
-		// Windows backslashes — normalise here so membership holds on every OS.
+		// Normalise BOTH sides to forward slashes: ts-morph's `getFilePath()` is
+		// already forward-slash, but a resolver-built `targetPath` and a caller's
+		// `p.dir` (e.g. built with `path.join`) carry Windows backslashes.
 		const fp = filePath.replace(/\\/g, "/");
 		let best: WorkspacePackage | null = null;
 		for (const p of packages) {
-			if (fp === p.dir || fp.startsWith(`${p.dir}/`)) {
-				if (!best || p.dir.length > best.dir.length) best = p;
+			const dir = p.dir.replace(/\\/g, "/");
+			if (fp === dir || fp.startsWith(`${dir}/`)) {
+				if (!best || dir.length > best.dir.replace(/\\/g, "/").length) best = p;
 			}
 		}
 		return best?.name ?? null;

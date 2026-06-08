@@ -72,10 +72,13 @@ describe("@c9up/ream-mcp published shape", () => {
 		}
 
 		tmpDir = mkdtempSync(path.join(tmpdir(), "ream-mcp-pack-"));
+		// On Windows `pnpm` is `pnpm.cmd`; execFileSync can't spawn it without the
+		// explicit name + a shell (the .cmd shim needs one since CVE-2024-27980).
+		const isWin = process.platform === "win32";
 		const stdout = execFileSync(
-			"pnpm",
+			isWin ? "pnpm.cmd" : "pnpm",
 			["pack", "--pack-destination", tmpDir],
-			{ cwd: PKG_ROOT, encoding: "utf8" },
+			{ cwd: PKG_ROOT, encoding: "utf8", shell: isWin },
 		);
 		const lastLine = stdout
 			.trim()
