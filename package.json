@@ -41,7 +41,8 @@
     "test": "vitest run",
     "test:rust": "cargo test -p ream-mcp-core",
     "lint": "biome check src/ tests/",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "pnpm build:ts"
   },
   "publishConfig": {
     "main": "./dist/index.js",
