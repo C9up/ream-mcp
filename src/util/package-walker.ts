@@ -127,7 +127,13 @@ function readPackage(dir: string): ReadResult | null {
 		Array.isArray(raw.workspaces) ||
 		(typeof raw.workspaces === "object" && raw.workspaces !== null);
 	return {
-		entry: { name: raw.name, dir, mainEntry },
+		// Normalise paths to forward slashes so MCP output is OS-independent
+		// (`dir`/`mainEntry` come from `path` APIs that yield backslashes on Windows).
+		entry: {
+			name: raw.name,
+			dir: dir.replace(/\\/g, "/"),
+			mainEntry: mainEntry.replace(/\\/g, "/"),
+		},
 		isWorkspaceRoot,
 	};
 }

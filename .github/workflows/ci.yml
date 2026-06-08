@@ -46,6 +46,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.suffix }}
 
       - name: Install dependencies
         run: pnpm install
@@ -127,6 +130,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-tests
       - run: cargo test --workspace
 
   # Publish job — gated on workflow_dispatch (manual maintainer trigger).

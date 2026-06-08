@@ -185,7 +185,9 @@ function buildTemplateEntry(
 	parse: ((tokens: unknown) => unknown) | undefined,
 	readFileSync: ((path: string, encoding: "utf8") => string) | undefined,
 ): ListTemplatesResult["templates"][number] {
-	const relPath = relative(templatesRoot, abs);
+	// Normalise to forward slashes so the MCP output is identical across OSes
+	// (`relative()` yields backslashes on Windows).
+	const relPath = relative(templatesRoot, abs).replace(/\\/g, "/");
 	let sizeBytes = 0;
 	try {
 		sizeBytes = statSync(abs).size;

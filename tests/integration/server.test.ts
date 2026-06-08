@@ -7,6 +7,7 @@
 
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { once } from "node:events";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -56,12 +57,14 @@ function spawnServer(): {
 	child: ChildProcessWithoutNullStreams;
 	rpc: StdioRpc;
 } {
-	// Resolve tsx from this package's own node_modules so the test works both
-	// in the monorepo workspace and in a standalone (published-repo) CI checkout.
-	const tsx = join(HERE, "..", "..", "node_modules", ".bin", "tsx");
-	const child = spawn(tsx, [BIN_TS], {
+	// Spawn `node --import tsx <entry>` rather than the `tsx` shim directly:
+	// node is a real executable on every OS, whereas `.bin/tsx` is a `.cmd`/`.ps1`
+	// shim on Windows that can't be spawned without a shell (and would hang). tsx
+	// is a devDependency, so it resolves from this package's node_modules (cwd).
+	const child = spawn(process.execPath, ["--import", "tsx", BIN_TS], {
+		cwd: join(HERE, "..", ".."),
 		stdio: ["pipe", "pipe", "pipe"],
-		env: { ...process.env, REAM_PROJECT_ROOT: "/tmp/dummy-root" },
+		env: { ...process.env, REAM_PROJECT_ROOT: join(tmpdir(), "ream-mcp-dummy-root") },
 	});
 	const rpc = new StdioRpc(child);
 	return { child, rpc };
@@ -81,8 +84,15 @@ beforeEach(async () => {
 afterEach(async () => {
 	if (child && child.exitCode === null) {
 		child.kill("SIGKILL");
-		await once(child, "exit").catch(() => undefined);
+		// Cap the wait: a child that failed to spawn emits `error`, never `exit`,
+		// so an unbounded `once(child,"exit")` would hang the whole suite.
+		await Promise.race([
+			once(child, "exit").catch(() => undefined),
+			new Promise((r) => setTimeout(r, 2000)),
+		]);
 	}
+	child = undefined;
+	rpc = undefined;
 });
 
 describe("ream-mcp > stdio > initialize", () => {
