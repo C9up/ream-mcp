@@ -60,7 +60,9 @@ jobs:
 
       - name: Build TypeScript (dist/)
         if: matrix.test
-        run: pnpm build
+        # build:ts only (tsc) — the .node was already built by "Build NAPI binary";
+        # `pnpm build` would redundantly recompile the whole Rust tree (slow on win32).
+        run: pnpm build:ts
 
       - name: Vitest
         if: matrix.test
