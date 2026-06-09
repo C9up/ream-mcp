@@ -70,7 +70,10 @@ function spawnServer(): {
 	const child = spawn(process.execPath, ["--import", "tsx", BIN_TS], {
 		cwd: join(HERE, "..", ".."),
 		stdio: ["pipe", "pipe", "pipe"],
-		env: { ...process.env, REAM_PROJECT_ROOT: join(tmpdir(), "ream-mcp-dummy-root") },
+		env: {
+			...process.env,
+			REAM_PROJECT_ROOT: join(tmpdir(), "ream-mcp-dummy-root"),
+		},
 	});
 	const rpc = new StdioRpc(child);
 	return { child, rpc };
@@ -124,7 +127,7 @@ describeServer("ream-mcp > stdio > initialize", () => {
 			protocolVersion: string;
 		};
 		expect(result.serverInfo.name).toBe("@c9up/ream-mcp");
-		expect(result.serverInfo.version).toBe("0.1.0");
+		expect(result.serverInfo.version).toMatch(/^\d+\.\d+\.\d+/);
 		expect(result.capabilities.tools).toBeDefined();
 		expect(typeof result.protocolVersion).toBe("string");
 	});

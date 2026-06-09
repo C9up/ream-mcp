@@ -116,20 +116,20 @@ describeIfBuilt("generate.* against the real ream-cli binary (D1)", () => {
 		expect(res.plannedFiles[1].path).toBe("app/orders/OrderController.ts");
 		expect(res.plannedFiles[2].path).toBe("app/orders/OrderValidator.ts");
 		expect(res.plannedFiles[3].path).toMatch(
-			/^database\/migrations\/\d{14}[0-9a-z]{4}_order\.ts$/,
+			/^database\/migrations\/\d{8}\d{3}_order\.ts$/,
 		);
 		// Story 33.4 H7: scope-cut warnings must be surfaced.
-		expect(res.warnings.some((w) => w.includes("migration timestamps"))).toBe(
+		expect(res.warnings.some((w) => w.includes("migration filename"))).toBe(
 			true,
 		);
 	});
 
-	it("real CLI emits a 14-digit timestamp + 4-char base-36 suffix on migrations (M1)", async () => {
+	it("real CLI emits a YYYYMMDD date + 3-digit sequence on migrations (M1)", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.migration", {
 			name: "AddUsers",
 		})) as { plannedFiles: Array<{ path: string }> };
 		expect(res.plannedFiles[0].path).toMatch(
-			/^database\/migrations\/\d{14}[0-9a-z]{4}_add_users\.ts$/,
+			/^database\/migrations\/\d{8}\d{3}_add_users\.ts$/,
 		);
 	});
 });
