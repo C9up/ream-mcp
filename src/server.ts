@@ -53,7 +53,8 @@ import { detectProjectRoot } from "./util/project-root.js";
 import { startStartupReindex } from "./util/startup-reindex.js";
 
 const PKG_NAME = "@c9up/ream-mcp";
-const PKG_VERSION = "0.1.0";
+// Keep in sync with package.json / Cargo — surfaced as MCP serverInfo.version.
+const PKG_VERSION = "0.1.4";
 const SHUTDOWN_TIMEOUT_MS = 500;
 
 export interface BootstrapOptions {
