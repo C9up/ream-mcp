@@ -54,7 +54,7 @@ import { startStartupReindex } from "./util/startup-reindex.js";
 
 const PKG_NAME = "@c9up/ream-mcp";
 // Keep in sync with package.json / Cargo — surfaced as MCP serverInfo.version.
-const PKG_VERSION = "0.1.5";
+const PKG_VERSION = "0.1.6";
 const SHUTDOWN_TIMEOUT_MS = 500;
 
 export interface BootstrapOptions {
