@@ -43,6 +43,10 @@ export interface BridgeResult {
 	migrationsDirExists: boolean;
 	dialect: Dialect;
 	supportsTransactions: boolean;
+	/** Resolved migrations tracking-table name (env / reamrc / default), the
+	 * same value handed to MigrationRunner — read queries MUST use this, not a
+	 * hardcoded literal, or an overridden table is silently ignored. */
+	migrationsTable: string;
 }
 
 /**
@@ -294,6 +298,15 @@ export async function buildAtlasBridge(
 	const migrationsDir = resolveMigrationsDir(opts.root);
 	const migrationsDirExists = existsSync(migrationsDir);
 	const tableName = resolveMigrationsTable(opts.root);
+	// Defense-in-depth: tableName flows from env/reamrc into raw read SQL, so
+	// reject anything that isn't a plain SQL identifier before it's exposed on
+	// BridgeResult (MigrationRunner also validates, but fail clean here first).
+	if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+		return {
+			error: "invalid migrations table name",
+			hint: `REAM_MIGRATIONS_TABLE / database.migrations.table must be a plain SQL identifier ([A-Za-z_][A-Za-z0-9_]*), got '${tableName}'`,
+		};
+	}
 
 	let atlas: typeof import("@c9up/atlas");
 	try {
@@ -338,6 +351,7 @@ export async function buildAtlasBridge(
 		migrationsDirExists,
 		dialect,
 		supportsTransactions,
+		migrationsTable: tableName,
 	};
 }
 

@@ -48,8 +48,6 @@ export {
 
 type Confidence = "high" | "medium" | "low";
 
-const MIGRATIONS_TABLE = "_migrations";
-
 interface ConsentInputs {
 	dryRun: boolean;
 	confirm: boolean;
@@ -138,7 +136,10 @@ async function runStatus(root: string): Promise<unknown> {
 			.filter((s) => s.status === "applied")
 			.map((s) => s.name);
 		const records = appliedNames.length
-			? await readAppliedRecords(bridge.connection as DatabaseAdapter)
+			? await readAppliedRecords(
+					bridge.connection as DatabaseAdapter,
+					bridge.migrationsTable,
+				)
 			: new Map<string, string>();
 
 		for (const s of statuses) {
@@ -177,9 +178,10 @@ async function runStatus(root: string): Promise<unknown> {
 
 async function readAppliedRecords(
 	adapter: DatabaseAdapter,
+	table: string,
 ): Promise<Map<string, string>> {
 	const rows = await adapter.query<MigrationRecord>(
-		`SELECT name, executed_at FROM ${MIGRATIONS_TABLE}`,
+		`SELECT name, executed_at FROM ${table}`,
 	);
 	const map = new Map<string, string>();
 	for (const r of rows) {
@@ -324,7 +326,7 @@ async function runRollback(
 		const rolledBack: Array<{ id: string; name: string; batch: number }> = [];
 		for (let i = 0; i < step; i++) {
 			const adapter = bridge.connection as DatabaseAdapter;
-			const before = await currentBatch(adapter);
+			const before = await currentBatch(adapter, bridge.migrationsTable);
 			if (before === 0) break;
 			const names = await runner.rollback();
 			for (const n of names) {
@@ -346,7 +348,7 @@ async function previewRollback(
 	step: number,
 ): Promise<Array<{ id: string; name: string; sql: string; batch: number }>> {
 	const adapter = bridge.connection as DatabaseAdapter;
-	const max = await currentBatch(adapter);
+	const max = await currentBatch(adapter, bridge.migrationsTable);
 	if (max === 0) return [];
 	const targetBatches = [];
 	for (let b = max; b > Math.max(0, max - step); b--) targetBatches.push(b);
@@ -355,7 +357,7 @@ async function previewRollback(
 		[];
 	for (const batch of targetBatches) {
 		const rows = await adapter.query<MigrationRecord>(
-			`SELECT name, batch FROM ${MIGRATIONS_TABLE} WHERE batch = ? ORDER BY name DESC`,
+			`SELECT name, batch FROM ${bridge.migrationsTable} WHERE batch = ? ORDER BY name DESC`,
 			[batch],
 		);
 		for (const r of rows) {
@@ -409,9 +411,12 @@ async function loadDownSql(
 // migration has run yet. The wire shape of `migration.status`
 // distinguishes the two via `currentBatch === 0` (no batches) — a
 // valid batch is always >= 1 in Atlas's contract.
-async function currentBatch(adapter: DatabaseAdapter): Promise<number> {
+async function currentBatch(
+	adapter: DatabaseAdapter,
+	table: string,
+): Promise<number> {
 	const rows = await adapter.query<{ max: number | null }>(
-		`SELECT MAX(batch) AS max FROM ${MIGRATIONS_TABLE}`,
+		`SELECT MAX(batch) AS max FROM ${table}`,
 	);
 	const v = rows[0]?.max;
 	return typeof v === "number" ? v : 0;

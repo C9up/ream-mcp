@@ -79,6 +79,23 @@ describe("migration > rollback", () => {
 		expect(result.wouldRollback.every((r) => r.batch === 1)).toBe(true);
 	});
 
+	// Audit 2026-06-13: the read queries hardcoded `_migrations`, ignoring a
+	// configured table name → rollback silently found 0 batches. Now they use
+	// the resolved table from BridgeResult.
+	it("reads via a configured REAM_MIGRATIONS_TABLE (not hardcoded _migrations)", async () => {
+		process.env.REAM_MIGRATIONS_TABLE = "custom_migrations";
+		try {
+			await applyMigrations(); // atlas tracks into custom_migrations
+			const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
+				dryRun: true,
+			})) as DryRollbackShape;
+			// Pre-fix the dry-run read hardcoded `_migrations` (empty) → 0 rows.
+			expect(result.wouldRollback.length).toBe(2);
+		} finally {
+			delete process.env.REAM_MIGRATIONS_TABLE;
+		}
+	});
+
 	it("refuses dryRun:false without confirm:true", async () => {
 		await applyMigrations();
 		const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
