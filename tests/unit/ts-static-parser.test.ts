@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Project } from "ts-morph";
 import { describe, expect, it } from "vitest";
 
@@ -8,8 +11,11 @@ import {
 	findClassesByDecorator,
 	findSymbol,
 	isEnvRef,
+	isLoadError,
 	isPlainRecord,
 	isUnevaluated,
+	loadProject,
+	resetCache,
 } from "../../src/util/ts-static-parser.js";
 
 function projectFromSource(source: string): Project {
@@ -248,5 +254,42 @@ describe("findSymbol — non-test path preference (M7 patch)", () => {
 		project.createSourceFile("/virtual/b/User.ts", "export class User {}");
 		const site = findSymbol(project, "User");
 		expect(site?.ambiguous).toBe(true);
+	});
+});
+
+describe("loadProject — cache discovers newly-added files (audit 2026-06-13)", () => {
+	it("a .ts file created after the first load shows up on the next call (no restart)", () => {
+		const root = mkdtempSync(join(tmpdir(), "ream-mcp-parser-"));
+		try {
+			const src = join(root, "src");
+			mkdirSync(src, { recursive: true });
+			writeFileSync(
+				join(root, "tsconfig.json"),
+				JSON.stringify({ include: ["src/**/*.ts"] }),
+				"utf8",
+			);
+			writeFileSync(join(src, "a.ts"), "export const a = 1;", "utf8");
+
+			resetCache();
+			const first = loadProject(root);
+			if (isLoadError(first)) throw new Error(first.error);
+			const firstPaths = first.project
+				.getSourceFiles()
+				.map((sf) => sf.getFilePath());
+			expect(firstPaths.some((p) => p.endsWith("/a.ts"))).toBe(true);
+			expect(firstPaths.some((p) => p.endsWith("/b.ts"))).toBe(false);
+
+			// A new file does NOT bump the tsconfig mtime, so the second call
+			// hits the cache — before the fix it stayed invisible until restart.
+			writeFileSync(join(src, "b.ts"), "export const b = 2;", "utf8");
+			const second = loadProject(root);
+			if (isLoadError(second)) throw new Error(second.error);
+			const secondPaths = second.project
+				.getSourceFiles()
+				.map((sf) => sf.getFilePath());
+			expect(secondPaths.some((p) => p.endsWith("/b.ts"))).toBe(true);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 });

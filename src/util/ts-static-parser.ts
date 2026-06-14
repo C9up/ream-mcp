@@ -108,6 +108,25 @@ export function loadProject(root: string): LoadedProject | LoadError {
 		}
 		const stillValid = CACHE.get(root) === cached;
 		if (stillValid) {
+			// A newly-created .ts file doesn't bump the tsconfig mtime, so the
+			// refresh loop above (which only reloads/removes already-known files)
+			// never surfaces it — the persistent server would omit it from every
+			// walk until restart. Re-read the tsconfig globs; ts-morph skips files
+			// already in the project, so this only picks up the new ones.
+			try {
+				const added = cached.project.addSourceFilesFromTsConfig(tsConfigPath);
+				if (added.length > 0) {
+					const newErrors = collectParseErrors(added);
+					if (newErrors.length > 0) {
+						cached.parseErrors = [
+							...new Set([...cached.parseErrors, ...newErrors]),
+						];
+					}
+				}
+			} catch {
+				// Malformed tsconfig between calls — keep serving the cached
+				// project rather than failing the whole call.
+			}
 			return {
 				project: cached.project,
 				tsConfigPath: cached.tsConfigPath,
@@ -137,19 +156,7 @@ export function loadProject(root: string): LoadedProject | LoadError {
 		};
 	}
 
-	const parseErrors: string[] = [];
-	for (const sf of project.getSourceFiles()) {
-		const errs = sf.getPreEmitDiagnostics();
-		// Only count parser-shape errors (TS1xxx). Semantic errors
-		// (TS2xxx) are noise without the type checker.
-		const syntactic = errs.filter((d) => {
-			const code = d.getCode();
-			return code >= 1000 && code < 2000;
-		});
-		if (syntactic.length > 0) {
-			parseErrors.push(sf.getFilePath());
-		}
-	}
+	const parseErrors = collectParseErrors(project.getSourceFiles());
 
 	const entry: CacheEntry = {
 		project,
@@ -163,6 +170,19 @@ export function loadProject(root: string): LoadedProject | LoadError {
 		tsConfigPath,
 		parseErrors,
 	};
+}
+
+/** Files with parser-shape errors (TS1xxx). Semantic errors (TS2xxx) are noise without the type checker. */
+function collectParseErrors(sourceFiles: SourceFile[]): string[] {
+	const out: string[] = [];
+	for (const sf of sourceFiles) {
+		const syntactic = sf.getPreEmitDiagnostics().filter((d) => {
+			const code = d.getCode();
+			return code >= 1000 && code < 2000;
+		});
+		if (syntactic.length > 0) out.push(sf.getFilePath());
+	}
+	return out;
 }
 
 export function isLoadError(v: LoadedProject | LoadError): v is LoadError {
