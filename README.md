@@ -7,12 +7,22 @@ introspect the live project, scaffold code, and navigate BMAD
 traceability through typed MCP tools, instead of reading
 hundreds of files into context.
 
-## Status
+## Tools
 
-**Story 33.1 — skeleton only.** This release ships the MCP stdio
-plumbing + a Rust core (`ream-mcp-core`) wired through NAPI. No
-tools yet — `tools/list` returns `{ tools: [] }`. Real tools land
-in 33.2 (grounded docs + hybrid search) onwards.
+The MCP stdio server (Rust core `ream-mcp-core` wired through NAPI) exposes a
+full toolset over `tools/list` — call it for the authoritative, up-to-date
+descriptors. The current categories:
+
+- **docs** — grounded documentation + hybrid search over the Ream docs
+- **introspect** — inspect routes, providers, decorated services
+- **generate** — scaffold controllers, entities, providers, modules, …
+- **migrations** — status / run / rollback helpers
+- **security** — security-surface checks
+- **doctor** — environment health checks
+- **inker** — template-engine helpers
+- **station** — admin-panel tooling
+- **scheduler** — scheduled-task inspection
+- **bmad** — BMAD workflow helpers
 
 ## Usage
 

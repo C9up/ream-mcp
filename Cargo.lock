@@ -2152,7 +2152,7 @@ dependencies = [
 
 [[package]]
 name = "ream-mcp-core"
-version = "0.1.6"
+version = "0.1.8"
 dependencies = [
  "fastembed",
  "once_cell",
@@ -2171,7 +2171,7 @@ dependencies = [
 
 [[package]]
 name = "ream-mcp-napi"
-version = "0.1.6"
+version = "0.1.8"
 dependencies = [
  "napi",
  "napi-build",
