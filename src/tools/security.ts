@@ -201,7 +201,7 @@ async function runScan(
 	}
 
 	if (selection.checks.includes("xss_html_raw_output")) {
-		scanEdgeTemplates(root, findings, knownGaps);
+		scanInkerTemplates(root, findings, knownGaps);
 	}
 
 	findings.sort(compareFindings);
@@ -210,26 +210,28 @@ async function runScan(
 
 /**
  * Best-effort regex scan for raw-output `{{{ }}}` interpolations
- * inside Edge templates. Walks `<root>/views/**\/*.edge` (the
- * documented Ream Edge layout) and pushes one finding per
- * matching line. Full Edge AST parsing is parked behind the
- * `edge-AST scanner` knownGap.
+ * inside inker templates. Walks `<root>/resources/templates/**\/*.inker`
+ * and pushes one finding per matching line. Full AST parsing is parked
+ * behind the `AST scanner` knownGap.
  */
-function scanEdgeTemplates(
+function scanInkerTemplates(
 	root: string,
 	findings: Finding[],
 	knownGaps: string[],
 ): void {
-	const viewsDir = join(root, "views");
-	if (!existsSync(viewsDir)) return;
+	// Ream templates live in `resources/templates` (InkerProvider's default)
+	// and carry the `.inker` extension. Both were wrong here, so this scanner
+	// had never opened a single template.
+	const templatesDir = join(root, "resources", "templates");
+	if (!existsSync(templatesDir)) return;
 	knownGaps.push(
-		"edge XSS scan is regex-based; install the edge-AST scanner for full coverage",
+		"template XSS scan is regex-based; an AST-based scanner would cover more",
 	);
-	const edgeFiles: string[] = [];
-	walkEdgeFiles(viewsDir, edgeFiles);
+	const inkerFiles: string[] = [];
+	walkInkerFiles(templatesDir, inkerFiles);
 	const def = CHECK_BY_ID.get("xss_html_raw_output");
 	if (!def) return;
-	for (const file of edgeFiles) {
+	for (const file of inkerFiles) {
 		let text: string;
 		try {
 			text = readFileSync(file, "utf8");
@@ -256,7 +258,7 @@ function scanEdgeTemplates(
 	}
 }
 
-function walkEdgeFiles(dir: string, out: string[]): void {
+function walkInkerFiles(dir: string, out: string[]): void {
 	let entries: import("node:fs").Dirent[];
 	try {
 		entries = readdirSync(dir, { withFileTypes: true });
@@ -267,10 +269,10 @@ function walkEdgeFiles(dir: string, out: string[]): void {
 		if (entry.name.startsWith(".")) continue;
 		const full = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			walkEdgeFiles(full, out);
+			walkInkerFiles(full, out);
 			continue;
 		}
-		if (entry.isFile() && entry.name.endsWith(".edge")) {
+		if (entry.isFile() && entry.name.endsWith(".inker")) {
 			out.push(full);
 		}
 	}

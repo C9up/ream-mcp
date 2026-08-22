@@ -5,9 +5,9 @@
  *
  *   1. Tagged template literals using `html` / `raw` /
  *      `unsafeHtml` to embed dynamic data without sanitization.
- *   2. Edge-template raw-output `{{{ ... }}}` inside `*.edge`
- *      files (regex-based — full Edge AST parsing is parked,
- *      see story scope cuts).
+ *   2. Template raw-output `{{{ ... }}}` inside `*.inker`
+ *      files (regex-based — full AST parsing is parked, see
+ *      story scope cuts).
  *
  * False negatives are acceptable here; the value is in catching
  * the literal anti-pattern that has bitten the project before.
