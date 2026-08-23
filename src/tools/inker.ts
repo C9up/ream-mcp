@@ -54,15 +54,30 @@ function shapeError(error: string, hint: string): ShapedError {
 	return { error, hint };
 }
 
+/**
+ * Resolve the templates directory, and refuse to leave the project.
+ *
+ * `root` comes from the tool call, so it is caller-supplied. An absolute path
+ * was taken as-is and a relative one could climb with `..`, which made this a
+ * reader for any file on the machine — `/etc`, a home directory, an SSH key —
+ * from a tool that is only supposed to look at a project's views.
+ *
+ * Returns null when the path escapes; the caller turns that into a shaped error.
+ */
 function resolveTemplatesRoot(
 	projectRoot: string,
 	overrideRel: string | undefined,
-): string {
+): string | null {
 	const rel =
 		typeof overrideRel === "string" && overrideRel.length > 0
 			? overrideRel
 			: DEFAULT_TEMPLATES_ROOT;
-	const abs = isAbsolute(rel) ? rel : resolve(projectRoot, rel);
+	const base = resolve(projectRoot);
+	const abs = isAbsolute(rel) ? resolve(rel) : resolve(base, rel);
+	// `relative` climbing out shows up as a leading `..`; an absolute result
+	// means a different root entirely (another drive on Windows).
+	const inside = relative(base, abs);
+	if (inside.startsWith("..") || isAbsolute(inside)) return null;
 	return abs;
 }
 
@@ -116,6 +131,12 @@ async function listTemplates(
 	const overrideRoot = typeof args.root === "string" ? args.root : undefined;
 	const lint = args.lint === true;
 	const templatesRoot = resolveTemplatesRoot(projectRoot, overrideRoot);
+	if (templatesRoot === null) {
+		return shapeError(
+			`The \`root\` argument points outside the project.`,
+			"Give a path inside the project — this tool only reads its views.",
+		);
+	}
 	const rootError = validateTemplatesRoot(templatesRoot);
 	if (rootError) return rootError;
 
@@ -267,6 +288,12 @@ async function renderTest(
 			: {};
 	const overrideRoot = typeof args.root === "string" ? args.root : undefined;
 	const templatesRoot = resolveTemplatesRoot(projectRoot, overrideRoot);
+	if (templatesRoot === null) {
+		return shapeError(
+			"The `root` argument points outside the project.",
+			"Give a path inside the project — this tool only reads its views.",
+		);
+	}
 	if (!existsSync(templatesRoot)) {
 		return shapeError(
 			`Templates root not found: ${templatesRoot}`,
