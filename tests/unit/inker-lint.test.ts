@@ -124,3 +124,39 @@ describe("inker.list_templates > lint", () => {
 		expect(res.templates).toHaveLength(1);
 	});
 });
+
+describe("inker.render_test > engine source", () => {
+	it("renders through the INSPECTED project's inker", async () => {
+		installFakeInker(`
+			class Templates {
+				constructor(opts) { this.root = opts.root }
+				async render(name, data) {
+					return "rendered " + name + " for " + data.who + " from " + this.root
+				}
+			}
+			module.exports = { Templates };
+		`);
+		writeFileSync(join(tmpRoot, "resources/templates/hello.inker"), "hi");
+
+		const res = (await dispatchInker(tmpRoot, "inker.render_test", {
+			template: "hello",
+			data: { who: "you" },
+		})) as { html?: string; error?: unknown };
+
+		expect(res.html).toContain("rendered hello for you");
+		// Rooted at the project's templates directory, not ream-mcp's own. The
+		// separator is normalised: Windows renders it with backslashes.
+		expect(res.html?.replace(/\\/g, "/")).toContain("resources/templates");
+	});
+
+	it("reports a shaped error when the project has no inker", async () => {
+		writeFileSync(join(tmpRoot, "resources/templates/hello.inker"), "hi");
+
+		const res = (await dispatchInker(tmpRoot, "inker.render_test", {
+			template: "hello",
+		})) as { error?: string; hint?: string };
+
+		expect(res.error).toMatch(/Failed to load @c9up\/inker/);
+		expect(res.hint).toMatch(/ream add/);
+	});
+});

@@ -170,6 +170,23 @@ async function listTemplates(
 }
 
 /**
+ * The bits of the project's `Templates` this server uses. Both are optional:
+ * an older inker has `render` but not `compileRaw`, and each caller checks the
+ * one it needs.
+ */
+interface ProjectEngine {
+	compileRaw?: (source: string, name?: string) => void;
+	render?: (
+		name: string,
+		data: Readonly<Record<string, unknown>>,
+	) => string | Promise<string>;
+}
+
+function isProjectEngine(value: unknown): value is ProjectEngine {
+	return isRecord(value);
+}
+
+/**
  * A `compileRaw`-shaped syntax checker from the INSPECTED project's inker.
  *
  * Resolved against the project rather than this package: ream-mcp does not
@@ -182,6 +199,42 @@ async function loadProjectInker(
 	projectRoot: string,
 	templatesRoot: string,
 ): Promise<((source: string, name?: string) => void) | null> {
+	const engine = await loadProjectEngine(projectRoot, templatesRoot);
+	if (engine === null || typeof engine.compileRaw !== "function") return null;
+	const compileRaw = engine.compileRaw.bind(engine);
+	return (source, name) => {
+		compileRaw(source, name);
+	};
+}
+
+/** The renderer half of the same engine — what `inker.render_test` drives. */
+async function loadProjectRenderer(
+	projectRoot: string,
+	templatesRoot: string,
+): Promise<{
+	render(
+		name: string,
+		data: Readonly<Record<string, unknown>>,
+	): Promise<string>;
+} | null> {
+	const engine = await loadProjectEngine(projectRoot, templatesRoot);
+	if (engine === null || typeof engine.render !== "function") return null;
+	const render = engine.render.bind(engine);
+	return {
+		render: (name, data) => Promise.resolve(render(name, data)),
+	};
+}
+
+/**
+ * A `Templates` instance from the INSPECTED project, rooted at its templates
+ * directory. Returns null when the project has no inker, an older one, or a
+ * native binary it cannot load — every caller reports that rather than
+ * treating it as "nothing to report".
+ */
+async function loadProjectEngine(
+	projectRoot: string,
+	templatesRoot: string,
+): Promise<ProjectEngine | null> {
 	try {
 		const require = createRequire(join(projectRoot, "package.json"));
 		const entry = require.resolve("@c9up/inker");
@@ -192,13 +245,7 @@ async function loadProjectInker(
 		const engine: unknown = Reflect.construct(TemplatesCtor, [
 			{ root: templatesRoot },
 		]);
-		if (!isRecord(engine) || typeof engine.compileRaw !== "function") {
-			return null;
-		}
-		const compileRaw = engine.compileRaw.bind(engine);
-		return (source, name) => {
-			compileRaw(source, name);
-		};
+		return isProjectEngine(engine) ? engine : null;
 	} catch {
 		// No inker in the project, an older one without compileRaw, or a native
 		// binary it cannot load. Reported as a gap, never as "no errors".
@@ -326,35 +373,18 @@ async function renderTest(
 			"Pass `root: '<relative-path>'` to point at a non-default location.",
 		);
 	}
-	let Templates: unknown;
-	try {
-		const mod = (await import("@c9up/inker" as string)) as {
-			Templates: new (opts: {
-				root: string;
-			}) => {
-				render(
-					name: string,
-					data: Readonly<Record<string, unknown>>,
-				): Promise<string>;
-			};
-		};
-		Templates = mod.Templates;
-	} catch (err) {
-		const detail = err instanceof Error ? err.message : String(err);
+	// From the INSPECTED project, like the lint path: ream-mcp does not depend
+	// on inker, and rendering against a different version's engine than the app
+	// uses would report failures the app does not have.
+	const renderer = await loadProjectRenderer(projectRoot, templatesRoot);
+	if (renderer === null) {
 		return shapeError(
-			`Failed to load @c9up/inker: ${detail}`,
+			"Failed to load @c9up/inker from the project",
 			"Run `pnpm install` (or `ream add @c9up/inker`) in the project before invoking this tool.",
 		);
 	}
-	const Ctor = Templates as new (opts: {
-		root: string;
-	}) => {
-		render(
-			name: string,
-			data: Readonly<Record<string, unknown>>,
-		): Promise<string>;
-	};
-	const tpl = new Ctor({ root: templatesRoot });
+	const tpl = renderer;
+
 	// Wall-clock deadline. The lex/parse/render pipeline has internal
 	// recursion bounds (MAX_EXPRESSION_DEPTH=256, MAX_RENDER_DEPTH=100)
 	// so a syntactically valid input can't blow the stack — but a
