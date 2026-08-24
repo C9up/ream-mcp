@@ -16,8 +16,10 @@
  * misconfiguration rather than throwing.
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { INKER_TOOLS, isInkerTool } from "./inker.descriptors.js";
 
@@ -142,40 +144,66 @@ async function listTemplates(
 
 	const files = walkTemplates(templatesRoot);
 	const templates: ListTemplatesResult["templates"] = [];
-	// Lazy-import the parser only when lint is requested — avoids loading
-	// the @c9up/inker package machinery for a plain listing.
-	let lex: ((src: string) => unknown) | undefined;
-	let parse: ((tokens: unknown) => unknown) | undefined;
-	let readFileSync: ((path: string, encoding: "utf8") => string) | undefined;
+	const knownGaps: string[] = [];
+	// Loaded only when lint is requested, and only from the INSPECTED project:
+	// its inker is the one whose grammar its templates were written against.
+	let compile: ((source: string, name?: string) => void) | undefined;
 	if (lint) {
-		const fsMod = await import("node:fs");
-		readFileSync = fsMod.readFileSync;
-		try {
-			const inkerLex = await import("@c9up/inker/lex" as string).catch(
-				() => null,
+		const loaded = await loadProjectInker(projectRoot, templatesRoot);
+		if (loaded === null) {
+			knownGaps.push(
+				"lint requested but @c9up/inker could not be loaded from the project — templates are listed without a syntax check.",
 			);
-			const inkerParse = await import("@c9up/inker/parse" as string).catch(
-				() => null,
-			);
-			if (inkerLex !== null && inkerParse !== null) {
-				lex = (inkerLex as { lex: typeof lex }).lex;
-				parse = (inkerParse as { parse: typeof parse }).parse;
-			}
-		} catch {
-			// Fall through — lint is best-effort. The listing still returns.
+		} else {
+			compile = loaded;
 		}
 	}
 	for (const abs of files) {
-		templates.push(
-			buildTemplateEntry(abs, templatesRoot, lex, parse, readFileSync),
-		);
+		templates.push(buildTemplateEntry(abs, templatesRoot, compile));
 	}
 	return {
 		root: relative(projectRoot, templatesRoot) || ".",
 		templates,
 		confidence: "high",
-		knownGaps: [],
+		knownGaps,
 	};
+}
+
+/**
+ * A `compileRaw`-shaped syntax checker from the INSPECTED project's inker.
+ *
+ * Resolved against the project rather than this package: ream-mcp does not
+ * depend on inker, and checking a template against a different version's
+ * grammar than the app renders it with would report errors the app does not
+ * have. Returns null when the project has no inker — the caller says so in
+ * `knownGaps` instead of reporting a clean bill of health it never checked.
+ */
+async function loadProjectInker(
+	projectRoot: string,
+	templatesRoot: string,
+): Promise<((source: string, name?: string) => void) | null> {
+	try {
+		const require = createRequire(join(projectRoot, "package.json"));
+		const entry = require.resolve("@c9up/inker");
+		const mod: unknown = await import(pathToFileURL(entry).href);
+		if (!isRecord(mod)) return null;
+		const TemplatesCtor = mod.Templates;
+		if (typeof TemplatesCtor !== "function") return null;
+		const engine: unknown = Reflect.construct(TemplatesCtor, [
+			{ root: templatesRoot },
+		]);
+		if (!isRecord(engine) || typeof engine.compileRaw !== "function") {
+			return null;
+		}
+		const compileRaw = engine.compileRaw.bind(engine);
+		return (source, name) => {
+			compileRaw(source, name);
+		};
+	} catch {
+		// No inker in the project, an older one without compileRaw, or a native
+		// binary it cannot load. Reported as a gap, never as "no errors".
+		return null;
+	}
 }
 
 /** Validate the templates root exists and is a directory, else a shaped error. */
@@ -196,15 +224,13 @@ function validateTemplatesRoot(templatesRoot: string): ShapedError | null {
 }
 
 /**
- * Build one template listing entry. When the lint functions are present, parse
- * the file and attach any parse error; a stat failure mid-walk keeps size 0.
+ * Build one template listing entry. When a syntax checker is present, parse the
+ * file and attach any error; a stat failure mid-walk keeps size 0.
  */
 function buildTemplateEntry(
 	abs: string,
 	templatesRoot: string,
-	lex: ((src: string) => unknown) | undefined,
-	parse: ((tokens: unknown) => unknown) | undefined,
-	readFileSync: ((path: string, encoding: "utf8") => string) | undefined,
+	compile: ((source: string, name?: string) => void) | undefined,
 ): ListTemplatesResult["templates"][number] {
 	// Normalise to forward slashes so the MCP output is identical across OSes
 	// (`relative()` yields backslashes on Windows).
@@ -221,9 +247,9 @@ function buildTemplateEntry(
 		relPath,
 		sizeBytes,
 	};
-	if (lex !== undefined && parse !== undefined && readFileSync !== undefined) {
+	if (compile !== undefined) {
 		try {
-			parse(lex(readFileSync(abs, "utf8")));
+			compile(readFileSync(abs, "utf8"), entry.name);
 		} catch (err) {
 			entry.error = extractInkerError(err);
 		}
