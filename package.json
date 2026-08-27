@@ -1,6 +1,6 @@
 {
   "name": "@c9up/ream-mcp",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Ream MCP server \u2014 agent-ready framework assistant (docs, introspection, actions, BMAD).",
   "license": "MIT",
   "type": "module",
