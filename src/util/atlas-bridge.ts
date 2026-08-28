@@ -319,15 +319,11 @@ export async function buildAtlasBridge(
 		};
 	}
 
-	let connection: import("@c9up/atlas").DatabaseAdapter & {
-		close(): Promise<void>;
-	};
+	// The type atlas actually returns, rather than a hand-written
+	// `DatabaseAdapter & { close() }` that then needed a double cast to fit.
+	let connection: import("@c9up/atlas").AsyncDatabaseConnection;
 	try {
-		connection = (await atlas.createNapiConnection(
-			url,
-		)) as unknown as import("@c9up/atlas").DatabaseAdapter & {
-			close(): Promise<void>;
-		};
+		connection = await atlas.createNapiConnection(url);
 	} catch (err) {
 		const detail = err instanceof Error ? err.message : String(err);
 		return {
