@@ -292,12 +292,10 @@ function buildCliArgs(
 		case "validator":
 			return ["make:validator", moduleName, className, ...flags];
 		case "seeder":
-			// Module is OPTIONAL for seeders — when omitted, pass an
-			// empty positional. The CLI accepts an empty module for
-			// `seeder` (file lives under `database/seeders/`).
-			return moduleName
-				? ["make:seeder", moduleName, className, ...flags]
-				: ["make:seeder", "", className, ...flags];
+			// One positional: the command comes from Atlas now, and it takes
+			// the name alone — the directory is `seeders.paths` in the
+			// application's database config, not something the caller passes.
+			return ["make:seeder", className, ...flags];
 		case "migration":
 			return ["make:migration", className, ...flags];
 		default:
@@ -353,9 +351,9 @@ function predictPaths(
 		case "validator":
 			return [`app/${moduleName}/${ensure(className, "Validator")}.ts`];
 		case "seeder":
-			return [`database/seeders/${ensure(className, "Seeder")}.ts`];
 		case "migration":
-			// timestamp-prefixed filename — can't predict at planning time.
+			// Both are timestamp-prefixed, into a directory the application
+			// configures — nothing to predict at planning time.
 			return [];
 		default:
 			return [];

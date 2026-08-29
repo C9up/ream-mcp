@@ -124,12 +124,9 @@ describeIfBuilt("generate.* against the real ream-cli binary (D1)", () => {
 		);
 	});
 
-	it("real CLI emits a YYYYMMDD date + 3-digit sequence on migrations (M1)", async () => {
-		const res = (await dispatchGenerate(tmpRoot, "generate.migration", {
-			name: "AddUsers",
-		})) as { plannedFiles: Array<{ path: string }> };
-		expect(res.plannedFiles[0].path).toMatch(
-			/^database\/migrations\/\d{8}\d{3}_add_users\.ts$/,
-		);
-	});
+	// `generate.migration` and `generate.seeder` are not exercised here any more:
+	// the binary no longer carries make:migration / make:seeder. They come from
+	// @c9up/atlas, through the console kernel, so they need an application with
+	// atlas registered rather than the bare project this fixture builds. The
+	// argv they produce is covered against the fake CLI in generate-dry-run.
 });

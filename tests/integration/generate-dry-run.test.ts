@@ -72,8 +72,8 @@ if (sub === 'make:controller') {
   const [_, mod, name] = positional;
   files = [planEntry('app/' + mod + '/' + name + 'Validator.ts', '// ' + name + 'Validator')];
 } else if (sub === 'make:seeder') {
-  const [_, mod, name] = positional;
-  files = [planEntry('database/seeders/' + name + 'Seeder.ts', '// ' + name + 'Seeder')];
+  const [_, name] = positional;
+  files = [planEntry('database/seeders/20260101000000_' + name + 'Seeder.ts', '// ' + name + 'Seeder')];
 } else if (sub === 'make:migration') {
   const [_, name] = positional;
   files = [planEntry('database/migrations/20260101000000_' + name.toLowerCase() + '.ts', '// ' + name + ' migration')];
@@ -247,24 +247,20 @@ describeIfTmpExec("generate.migration — class-scoped name only", () => {
 	});
 });
 
-describeIfTmpExec("generate.seeder — module is optional (H1)", () => {
-	it("succeeds without a module argument", async () => {
+describeIfTmpExec("generate.seeder — the name is the only positional", () => {
+	it("passes the name straight through to Atlas's make:seeder", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.seeder", {
 			name: "User",
 		})) as {
 			plannedFiles: Array<{ path: string }>;
 			confidence: string;
 		};
-		expect(res.plannedFiles[0].path).toBe("database/seeders/UserSeeder.ts");
+		// Timestamp-prefixed, into the directory the app configures — so the
+		// planned path is whatever the command reports, never a guess.
+		expect(res.plannedFiles[0].path).toMatch(
+			/^database\/seeders\/\d+_UserSeeder\.ts$/,
+		);
 		expect(res.confidence).toBe("high");
-	});
-
-	it("accepts a module argument (used in JSDoc)", async () => {
-		const res = (await dispatchGenerate(tmpRoot, "generate.seeder", {
-			module: "orders",
-			name: "User",
-		})) as { plannedFiles: Array<{ path: string }> };
-		expect(res.plannedFiles[0].path).toBe("database/seeders/UserSeeder.ts");
 	});
 });
 

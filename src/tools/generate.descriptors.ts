@@ -91,7 +91,7 @@ export const GENERATE_TOOLS: ToolDescriptor[] = [
 	{
 		name: "generate.migration",
 		description:
-			"Scaffold an Atlas migration at `database/migrations/<timestamp>_<snake>.ts`. The PascalCase `name` (e.g. `CreateOrdersTable`) is snake-cased for the filename.",
+			"Scaffold a migration through Atlas's `make:migration`, into the directory `migrations.paths` names in config/database.ts (default `database/migrations`). Requires @c9up/atlas and its commands registered in reamrc.ts.",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -110,16 +110,10 @@ export const GENERATE_TOOLS: ToolDescriptor[] = [
 	{
 		name: "generate.seeder",
 		description:
-			"Scaffold a database seeder at `database/seeders/<Name>Seeder.ts`.",
+			"Scaffold a seeder through Atlas's `make:seeder`, into the directory `seeders.paths` names in config/database.ts (default `database/seeders`). Requires @c9up/atlas and its commands registered in reamrc.ts.",
 		inputSchema: {
 			type: "object",
 			properties: {
-				module: {
-					type: "string",
-					pattern: MODULE_PATTERN,
-					description:
-						"Module the seeder is scoped to (used in the JSDoc; the file lives under `database/seeders/`).",
-				},
 				name: {
 					type: "string",
 					pattern: CLASS_NAME_PATTERN,
