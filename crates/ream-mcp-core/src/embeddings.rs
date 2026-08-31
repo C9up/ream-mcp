@@ -53,7 +53,8 @@ pub fn status() -> EmbeddingsStatus {
     // Opt-out for CI / offline: skip the fastembed model + ONNX-runtime download
     // (hundreds of MB, fetched lazily on first use) and fall back to BM25-only.
     if std::env::var("REAM_MCP_DISABLE_EMBEDDINGS").is_ok() {
-        let s = EmbeddingsStatus::Unavailable("disabled via REAM_MCP_DISABLE_EMBEDDINGS".to_string());
+        let s =
+            EmbeddingsStatus::Unavailable("disabled via REAM_MCP_DISABLE_EMBEDDINGS".to_string());
         *guard = Some(s.clone());
         return s;
     }

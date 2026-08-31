@@ -343,7 +343,8 @@ mod tests {
 
     #[test]
     fn splits_on_h2_boundaries() {
-        let md = "# Title\n\nIntro paragraph.\n\n## Section A\n\nBody A.\n\n## Section B\n\nBody B.\n";
+        let md =
+            "# Title\n\nIntro paragraph.\n\n## Section A\n\nBody A.\n\n## Section B\n\nBody B.\n";
         let chunks = chunk_markdown(md.as_bytes(), ChunkKind::Markdown);
         assert!(
             chunks.len() >= 3,
@@ -430,11 +431,10 @@ mod tests {
         let chunks = chunk_markdown(md.as_bytes(), ChunkKind::Markdown);
         let ids: Vec<&str> = chunks.iter().map(|c| c.id.as_str()).collect();
         let unique: std::collections::HashSet<&&str> = ids.iter().collect();
-        assert_eq!(
-            ids.len(),
-            unique.len(),
-            "duplicate ids in chunks: {ids:?}"
+        assert_eq!(ids.len(), unique.len(), "duplicate ids in chunks: {ids:?}");
+        assert!(
+            ids.iter().any(|i| i.contains("~2")),
+            "expected ~2 suffix in {ids:?}"
         );
-        assert!(ids.iter().any(|i| i.contains("~2")), "expected ~2 suffix in {ids:?}");
     }
 }

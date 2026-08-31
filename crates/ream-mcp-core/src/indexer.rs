@@ -17,8 +17,8 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::chunker::{Chunk, ChunkKind, chunk_markdown};
-use crate::embeddings::{Embedding, embed_batch};
+use crate::chunker::{chunk_markdown, Chunk, ChunkKind};
+use crate::embeddings::{embed_batch, Embedding};
 use crate::store::{Store, StoreError};
 
 const MAX_FILE_BYTES: u64 = 256 * 1024;

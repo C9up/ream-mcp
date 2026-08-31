@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::embeddings::{cosine, embed_batch, status, EmbeddingsStatus};
-use crate::store::{Store, StoredChunk, escape_fts_query};
+use crate::store::{escape_fts_query, Store, StoredChunk};
 
 const BM25_CANDIDATE_LIMIT: u32 = 50;
 const HYBRID_BM25_WEIGHT: f32 = 0.4;
@@ -150,7 +150,11 @@ fn score_candidates(
     bm25_scores: &[f32],
     query_emb: Option<&[f32]>,
 ) -> Vec<(StoredChunk, f32)> {
-    let max_bm25 = bm25_scores.iter().cloned().fold(f32::MIN, f32::max).max(1e-6);
+    let max_bm25 = bm25_scores
+        .iter()
+        .cloned()
+        .fold(f32::MIN, f32::max)
+        .max(1e-6);
     let mut out: Vec<(StoredChunk, f32)> = Vec::with_capacity(candidates.len());
     for (i, c) in candidates.iter().enumerate() {
         let bm25_norm = bm25_scores[i] / max_bm25;
@@ -243,10 +247,7 @@ mod tests {
 
     #[test]
     fn bm25_only_with_no_embeddings_returns_low_confidence() {
-        let store = populated_store(&[
-            ("a", "the quick brown fox"),
-            ("b", "lorem ipsum dolor"),
-        ]);
+        let store = populated_store(&[("a", "the quick brown fox"), ("b", "lorem ipsum dolor")]);
         let opts = SearchOptions::default();
         let result = search(&store, "brown fox", &opts);
         // We don't try to load real embeddings in unit tests — the

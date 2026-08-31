@@ -5,11 +5,11 @@
 use std::path::Path;
 
 use once_cell::sync::OnceCell;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
 use crate::chunker::Chunk;
-use crate::embeddings::{Embedding, decode_blob, encode_blob};
+use crate::embeddings::{decode_blob, encode_blob, Embedding};
 
 /// Tracks whether `sqlite3_auto_extension` was successfully called
 /// once per process. Re-registering the same init pointer is harmless
@@ -69,9 +69,8 @@ impl Store {
                 *mut rusqlite::ffi::sqlite3,
                 *mut *mut std::os::raw::c_char,
                 *const rusqlite::ffi::sqlite3_api_routines,
-            ) -> std::os::raw::c_int = std::mem::transmute(
-                sqlite_vec::sqlite3_vec_init as *const (),
-            );
+            ) -> std::os::raw::c_int =
+                std::mem::transmute(sqlite_vec::sqlite3_vec_init as *const ());
             let ret = rusqlite::ffi::sqlite3_auto_extension(Some(init_fn));
             ret == 0
         });
@@ -174,10 +173,7 @@ impl Store {
         Ok(n as u32)
     }
 
-    pub fn audit_drift(
-        &self,
-        current: &[(String, i64)],
-    ) -> Result<Vec<DriftedFile>, StoreError> {
+    pub fn audit_drift(&self, current: &[(String, i64)]) -> Result<Vec<DriftedFile>, StoreError> {
         let mut out = Vec::new();
         let mut stmt = self.conn.prepare("SELECT file, mtime FROM files")?;
         let rows = stmt.query_map([], |row| {
@@ -225,11 +221,7 @@ impl Store {
         Ok(res)
     }
 
-    pub fn bm25_candidates(
-        &self,
-        query: &str,
-        limit: u32,
-    ) -> Result<Vec<StoredChunk>, StoreError> {
+    pub fn bm25_candidates(&self, query: &str, limit: u32) -> Result<Vec<StoredChunk>, StoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT c.id, c.file, c.heading_path, c.body, c.kind, c.package, c.line_start, c.line_end, c.embedding
              FROM chunks_fts f
@@ -414,7 +406,9 @@ mod tests {
             fake_chunk("h1:a", "alpha body"),
             fake_chunk("h1:b", "beta body"),
         ];
-        if let Err(e) = store.upsert_chunks("docs/file.md", Some("ream"), &chunks, None, 1000, "abc") {
+        if let Err(e) =
+            store.upsert_chunks("docs/file.md", Some("ream"), &chunks, None, 1000, "abc")
+        {
             panic!("upsert: {e}");
         }
         assert_eq!(store.count_chunks().unwrap_or(0), 2);
@@ -476,14 +470,9 @@ mod tests {
             Ok(s) => s,
             Err(e) => panic!("open: {e}"),
         };
-        if let Err(e) = store.upsert_chunks(
-            "a.md",
-            None,
-            &[fake_chunk("h:1", "x")],
-            None,
-            1000,
-            "h",
-        ) {
+        if let Err(e) =
+            store.upsert_chunks("a.md", None, &[fake_chunk("h:1", "x")], None, 1000, "h")
+        {
             panic!("upsert: {e}");
         }
         let drift = store
@@ -500,7 +489,9 @@ mod tests {
             Ok(s) => s,
             Err(e) => panic!("open: {e}"),
         };
-        if let Err(e) = store.upsert_chunks("gone.md", None, &[fake_chunk("h:1", "x")], None, 1, "h") {
+        if let Err(e) =
+            store.upsert_chunks("gone.md", None, &[fake_chunk("h:1", "x")], None, 1, "h")
+        {
             panic!("upsert: {e}");
         }
         let drift = store.audit_drift(&[]).unwrap_or_default();

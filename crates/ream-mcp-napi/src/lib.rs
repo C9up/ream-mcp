@@ -14,8 +14,8 @@ use std::sync::Mutex;
 use napi_derive::napi;
 use once_cell::sync::Lazy;
 
-use ream_mcp_core::indexer::{IndexConfig, index};
-use ream_mcp_core::search::{SearchOptions, SearchResult, search};
+use ream_mcp_core::indexer::{index, IndexConfig};
+use ream_mcp_core::search::{search, SearchOptions, SearchResult};
 use ream_mcp_core::store::{Store, StoredChunk};
 use ream_mcp_core::trace::scan_dir;
 
@@ -85,7 +85,11 @@ pub fn search_napi(root: String, query: String, opts_json: String) -> napi::Resu
 /// Look up a single chunk by stable id OR — when `by_topic` is true —
 /// by heading topic (top-1 BM25 on `heading_path`).
 #[napi(js_name = "getChunk")]
-pub fn get_chunk(root: String, id_or_topic: String, by_topic: bool) -> napi::Result<Option<String>> {
+pub fn get_chunk(
+    root: String,
+    id_or_topic: String,
+    by_topic: bool,
+) -> napi::Result<Option<String>> {
     let result = with_store(&root, |store| -> Result<Option<StoredChunk>, String> {
         if by_topic {
             store.top_by_topic(&id_or_topic).map_err(|e| e.to_string())
