@@ -40,7 +40,7 @@
     "build": "pnpm build:napi && pnpm build:ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:rust": "cargo test -p ream-mcp-core",
+    "test:rust": "REAM_MCP_DISABLE_EMBEDDINGS=1 cargo test -p ream-mcp-core",
     "lint": "biome check src/ tests/",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "pnpm build:ts"
