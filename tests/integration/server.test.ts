@@ -82,6 +82,19 @@ function spawnServer(): {
 let child: ChildProcessWithoutNullStreams | undefined;
 let rpc: StdioRpc | undefined;
 
+/**
+ * The spawned client, or a clear failure.
+ *
+ * Calls used to go through `client().send(...)`, which typed every response as
+ * possibly-undefined and then read `.error` off it anyway — so a run where the
+ * child never spawned would have failed on a property of undefined rather than
+ * on the thing that actually went wrong.
+ */
+function client(): StdioRpc {
+	if (!rpc) throw new Error("the server child was not spawned");
+	return rpc;
+}
+
 beforeEach(async () => {
 	// Belt-and-suspenders with `describeServer`: never spawn the server child on
 	// win32, where a successfully-booted child isn't reliably reaped and keeps
@@ -110,7 +123,7 @@ afterEach(async () => {
 
 describeServer("ream-mcp > stdio > initialize", () => {
 	it("responds with serverInfo + tools capability", async () => {
-		const res = await rpc?.send({
+		const res = await client().send({
 			jsonrpc: "2.0",
 			id: 1,
 			method: "initialize",
@@ -135,7 +148,7 @@ describeServer("ream-mcp > stdio > initialize", () => {
 
 describeServer("ream-mcp > stdio > tools/list", () => {
 	it("returns the 5 docs.* + 6 introspect.* + 6 generate.* + 3 quality.* + 3 migration.* + 1 security.* + 7 bmad.* + 2 doctor.* + 2 inker.* + 1 station.* + 1 scheduler.* tools", async () => {
-		await rpc?.send({
+		await client().send({
 			jsonrpc: "2.0",
 			id: 1,
 			method: "initialize",
@@ -151,7 +164,7 @@ describeServer("ream-mcp > stdio > tools/list", () => {
 			`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`,
 		);
 
-		const res = await rpc?.send({
+		const res = await client().send({
 			jsonrpc: "2.0",
 			id: 2,
 			method: "tools/list",
@@ -211,7 +224,7 @@ describeServer("ream-mcp > stdio > tools/list", () => {
 
 describeServer("ream-mcp > stdio > unknown method", () => {
 	it("returns JSON-RPC error -32601 (Method not found)", async () => {
-		await rpc?.send({
+		await client().send({
 			jsonrpc: "2.0",
 			id: 1,
 			method: "initialize",
@@ -225,7 +238,7 @@ describeServer("ream-mcp > stdio > unknown method", () => {
 			`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`,
 		);
 
-		const res = await rpc?.send({
+		const res = await client().send({
 			jsonrpc: "2.0",
 			id: 99,
 			method: "totally/made-up-method",
@@ -244,7 +257,7 @@ describeServer("ream-mcp > stdio > SIGTERM shutdown", () => {
 		// Without this, the 250ms beforeEach sleep races a slow boot
 		// (ts-morph + MCP SDK + NAPI) and SIGTERM falls back to Node's
 		// default behaviour (exit code 143 / signal-terminated).
-		const initRes = await rpc?.send({
+		const initRes = await client().send({
 			jsonrpc: "2.0",
 			id: 999,
 			method: "initialize",

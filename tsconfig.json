@@ -12,6 +12,8 @@
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": false,
     "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -29,7 +31,6 @@
       "node"
     ],
     "outDir": "dist",
-    "rootDir": "src",
     "noEmit": false
   },
   "include": [
@@ -39,7 +40,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "tests",
-    "target"
+    "target",
+    "tests/fixtures"
   ]
 }
