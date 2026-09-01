@@ -36,7 +36,7 @@
     "build:rust": "cargo build --release -p ream-mcp-napi",
     "build:napi": "pnpm build:rust && pnpm build:napi-types && node scripts/copy-napi.mjs",
     "build:napi-types": "node scripts/build-napi-types.mjs",
-    "build:ts": "tsc",
+    "build:ts": "tsc -p tsconfig.build.json",
     "build": "pnpm build:napi && pnpm build:ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

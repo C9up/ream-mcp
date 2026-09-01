@@ -30,8 +30,7 @@
     "types": [
       "node"
     ],
-    "outDir": "dist",
-    "noEmit": false
+    "noEmit": true
   },
   "include": [
     "src/**/*.ts",
