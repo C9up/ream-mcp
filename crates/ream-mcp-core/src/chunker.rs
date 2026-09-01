@@ -171,15 +171,10 @@ pub fn chunk_markdown(file_bytes: &[u8], kind: ChunkKind) -> Vec<Chunk> {
                     current_body.push('\n');
                 }
             }
-            Event::End(TagEnd::Paragraph) => {
-                if !in_heading {
-                    current_body.push_str("\n\n");
-                }
-            }
-            Event::End(TagEnd::CodeBlock) => {
-                if !in_heading {
-                    current_body.push_str("\n\n");
-                }
+            // One arm: both ends produce the same blank line, and inside a
+            // heading neither produces anything.
+            Event::End(TagEnd::Paragraph | TagEnd::CodeBlock) if !in_heading => {
+                current_body.push_str("\n\n");
             }
             _ => {}
         }
