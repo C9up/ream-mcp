@@ -14,6 +14,13 @@
 //!
 //! `REAM_MCP_EMBED_WAIT` opts back into building it inline, for the case where
 //! waiting is the right answer — indexing a repository once, deliberately.
+//!
+//! One consequence worth knowing before it costs someone an afternoon: a
+//! warm-up in flight keeps the PROCESS alive until it finishes. `cargo test`
+//! without `REAM_MCP_DISABLE_EMBEDDINGS` therefore prints its results, passes,
+//! and then sits there for as long as the download takes — which reads as a
+//! hang after a green run rather than before one. `pnpm test:rust` and CI both
+//! set the variable; a bare `cargo test` does not.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
