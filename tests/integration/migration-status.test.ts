@@ -23,9 +23,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, "..", "fixtures", "migration-app");
 
@@ -77,9 +74,9 @@ describe("migration > status", () => {
 		expect(result.pending.length).toBe(2);
 		expect(defined(result.pending[0]).name).toBe("create_users");
 		expect(defined(result.pending[0]).id).toBe("1700000000_create_users");
-		expect(defined(result.pending[0]).file.endsWith("1700000000_create_users.ts")).toBe(
-			true,
-		);
+		expect(
+			defined(result.pending[0]).file.endsWith("1700000000_create_users.ts"),
+		).toBe(true);
 		expect(result.currentBatch).toBe(0);
 	});
 
@@ -96,7 +93,9 @@ describe("migration > status", () => {
 			expect(result.pending).toEqual([]);
 			expect(result.currentBatch).toBe(0);
 			expect(result.confidence).toBe("medium");
-			expect(defined(result.knownGaps[0])).toContain("migrations directory not found");
+			expect(defined(result.knownGaps[0])).toContain(
+				"migrations directory not found",
+			);
 		} finally {
 			delete process.env.REAM_MIGRATIONS_DIR;
 		}

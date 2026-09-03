@@ -8,9 +8,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 function fileWith(source: string) {
 	const project = new Project({ useInMemoryFileSystem: true });
 	return project.createSourceFile("t.ts", source);

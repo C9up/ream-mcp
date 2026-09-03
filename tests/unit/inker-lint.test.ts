@@ -22,9 +22,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 interface ListResult {
 	templates: Array<{
 		name: string;

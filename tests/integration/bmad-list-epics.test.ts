@@ -13,9 +13,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 const REAM_ROOT = findReamRepoRoot();
 
 interface EpicShape {
@@ -68,7 +65,9 @@ describe.skipIf(REAM_ROOT === null)("bmad.list_epics", () => {
 		)) as ListShape;
 		expect(b.epics.map((e) => e.id)).toEqual(a.epics.map((e) => e.id));
 		for (let i = 0; i < a.epics.length - 1; i++) {
-			expect(Number(defined(a.epics[i]).id)).toBeLessThan(Number(defined(a.epics[i + 1]).id));
+			expect(Number(defined(a.epics[i]).id)).toBeLessThan(
+				Number(defined(a.epics[i + 1]).id),
+			);
 		}
 	});
 });

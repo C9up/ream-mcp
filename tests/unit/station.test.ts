@@ -12,7 +12,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
 let tmpRoot: string;
 
 beforeEach(() => {
@@ -66,7 +65,11 @@ export const articleResource = defineResource({
 		expect(res.resources).toHaveLength(1);
 		expect(defined(res.resources[0]).name).toBe("articles");
 		expect(defined(res.resources[0]).entity).toBe("Article");
-		expect(defined(res.resources[0]).actions).toEqual(["list", "show", "create"]);
+		expect(defined(res.resources[0]).actions).toEqual([
+			"list",
+			"show",
+			"create",
+		]);
 		expect(defined(res.resources[0]).confidence).toBe("high");
 	});
 

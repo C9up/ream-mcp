@@ -18,14 +18,11 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
 import {
 	atomicWrite,
 	findStatusLine,
 	replaceStatusLine,
 } from "../../src/util/yaml-atomic.js";
-
-
 
 const SAMPLE = [
 	"# header comment",

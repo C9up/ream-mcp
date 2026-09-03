@@ -18,9 +18,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 function inMemoryProject(files: Record<string, string>): Project {
 	const project = new Project({ useInMemoryFileSystem: true });
 	for (const [path, content] of Object.entries(files)) {

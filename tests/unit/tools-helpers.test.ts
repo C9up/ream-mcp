@@ -7,9 +7,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 describe("ream-mcp > tools/_helpers > jsonContent", () => {
 	it("wraps a value as a single text content block with pretty-printed JSON", () => {
 		const out = jsonContent({ ok: true, n: 1 });

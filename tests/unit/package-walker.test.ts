@@ -22,9 +22,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 let root: string;
 
 beforeEach(() => {
@@ -60,7 +57,9 @@ describe("walkWorkspacePackages", () => {
 
 		const found = walkWorkspacePackages(root);
 		expect(found.map((p) => p.name)).toEqual(["alpha", "zeta"]);
-		expect(defined(found[0]).mainEntry.endsWith("alpha/src/index.ts")).toBe(true);
+		expect(defined(found[0]).mainEntry.endsWith("alpha/src/index.ts")).toBe(
+			true,
+		);
 	});
 
 	it("skips node_modules even when nested package.jsons live there", () => {

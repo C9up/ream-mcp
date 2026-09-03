@@ -23,7 +23,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchGenerate } from "../../src/tools/generate.js";
 import { canExecInTmp } from "../test-utils.js";
 
-
 // Skip when the system tmpdir refuses exec (noexec mount on hardened
 // CIs). The suite writes a Node stub under tmpdir() and spawns it via
 // REAM_BIN; without exec permission the spawn surfaces as EPERM.

@@ -15,9 +15,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 describe("parseEpicsFile", () => {
 	it("parses a simple Epic with two Stories", () => {
 		const text = [
@@ -49,7 +46,9 @@ describe("parseEpicsFile", () => {
 		expect(defined(r.epics[0]).id).toBe("7");
 		expect(defined(r.epics[0]).title).toBe("Scheduler");
 		expect(defined(defined(r.epics[0]).stories[0]).id).toBe("7.3");
-		expect(defined(defined(r.epics[0]).stories[0]).title).toBe("Cron expressions");
+		expect(defined(defined(r.epics[0]).stories[0]).title).toBe(
+			"Cron expressions",
+		);
 	});
 
 	it("captures a trailing status badge on Story headings", () => {
@@ -98,7 +97,10 @@ describe("parseEpicsFile", () => {
 		].join("\n");
 		const r = parseEpicsFile(text);
 		expect(r.epics.map((e) => e.id)).toEqual(["28", "33"]);
-		expect(defined(r.epics[1]).stories.map((s) => s.id)).toEqual(["33.2", "33.7"]);
+		expect(defined(r.epics[1]).stories.map((s) => s.id)).toEqual([
+			"33.2",
+			"33.7",
+		]);
 	});
 
 	it("records start/end line numbers for sliceSection consumers", () => {

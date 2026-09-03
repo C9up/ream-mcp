@@ -146,7 +146,9 @@ describeIfTmpExec("generate.controller — dry-run by default", () => {
 		};
 		expect(Array.isArray(res.plannedFiles)).toBe(true);
 		expect(res.plannedFiles.length).toBe(1);
-		expect(defined(res.plannedFiles[0]).path).toBe("app/orders/OrdersController.ts");
+		expect(defined(res.plannedFiles[0]).path).toBe(
+			"app/orders/OrdersController.ts",
+		);
 		expect(defined(res.plannedFiles[0]).exists).toBe(false);
 		expect(res.confidence).toBe("high");
 		expect(res.knownGaps).toEqual([]);
@@ -232,8 +234,12 @@ describeIfTmpExec("generate.module — umbrella", () => {
 		};
 		expect(res.plannedFiles.length).toBe(4);
 		expect(defined(res.plannedFiles[0]).path).toBe("app/orders/Order.ts");
-		expect(defined(res.plannedFiles[1]).path).toBe("app/orders/OrderController.ts");
-		expect(defined(res.plannedFiles[2]).path).toBe("app/orders/OrderValidator.ts");
+		expect(defined(res.plannedFiles[1]).path).toBe(
+			"app/orders/OrderController.ts",
+		);
+		expect(defined(res.plannedFiles[2]).path).toBe(
+			"app/orders/OrderValidator.ts",
+		);
 		expect(defined(res.plannedFiles[3]).path).toMatch(
 			/^database\/migrations\/\d+_order\.ts$/,
 		);

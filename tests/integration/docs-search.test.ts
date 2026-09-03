@@ -20,9 +20,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 let workDir: string;
 let envBackup: string | undefined;
 

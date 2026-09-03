@@ -21,9 +21,6 @@ function defined<T>(value: T | null | undefined): T {
 	return value;
 }
 
-
-
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, "..", "fixtures", "introspect-app");
 
