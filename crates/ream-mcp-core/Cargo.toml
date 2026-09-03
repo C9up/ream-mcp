@@ -18,13 +18,16 @@ sqlite-vec = "0.1"
 # Markdown AST walker.
 pulldown-cmark = { version = "0.13", default-features = false }
 # Embeddings via ONNX runtime + BAAI/bge-small-en-v1.5.
-fastembed = "5"
+fastembed = "6"
 # Force `ort` (pulled by fastembed) to load ONNX Runtime dynamically at runtime
 # rather than linking a prebuilt at build time. `ort` ships no prebuilt for some
 # targets (e.g. x86_64-apple-darwin under cross-compile), which breaks the NAPI
 # build there. With load-dynamic the build links nothing; at runtime, if the
 # ONNX lib can't be loaded, fastembed init fails and search degrades to BM25.
-ort = { version = "=2.0.0-rc.12", features = ["load-dynamic"] }
+# Pinned exactly, and to the same release fastembed resolves: `ort` is
+# pre-1.0, so a caret range would let a release candidate change under us, and
+# the two crates disagreeing on it is a link error rather than a type error.
+ort = { version = "=2.0.0-rc.13", features = ["load-dynamic"] }
 # SHA-256 for stable chunk ids — `{file_hash[..8]}:{heading_path}`.
 sha2 = "0.11"
 # Filesystem walker for the corpus + traceability scanner.
