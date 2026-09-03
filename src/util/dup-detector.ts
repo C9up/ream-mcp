@@ -108,8 +108,13 @@ export function findDuplicates(
 		fileTokens.set(relPath, tokens);
 
 		for (let i = 0; i + opts.minTokens <= tokens.length; i++) {
-			const startLine = tokens[i].line;
-			const endLine = tokens[i + opts.minTokens - 1].line;
+			// The loop bound guarantees both ends of the window; naming the miss
+			// carries that bound into the reads.
+			const startTok = tokens[i];
+			const endTok = tokens[i + opts.minTokens - 1];
+			if (startTok === undefined || endTok === undefined) continue;
+			const startLine = startTok.line;
+			const endLine = endTok.line;
 			if (endLine - startLine + 1 < opts.minLines) continue;
 
 			const hash = hashWindow(tokens, i, opts.minTokens);
@@ -169,7 +174,7 @@ export function findDuplicates(
 
 	duplicates.sort((a, b) => {
 		if (a.tokens !== b.tokens) return b.tokens - a.tokens;
-		return a.files[0].path.localeCompare(b.files[0].path);
+		return (a.files[0]?.path ?? "").localeCompare(b.files[0]?.path ?? "");
 	});
 
 	return { duplicates, skipped: skipped.sort() };
@@ -187,8 +192,8 @@ function extendGroup(
 	minTokens: number,
 ): { tokens: number; windows: ExtendedWindow[] } {
 	const ref = group[0];
-	const refTokens = fileTokens.get(ref.path);
-	if (!refTokens) {
+	const refTokens = ref === undefined ? undefined : fileTokens.get(ref.path);
+	if (ref === undefined || !refTokens) {
 		return {
 			tokens: minTokens,
 			windows: group.map((w) => toExtended(w, minTokens, fileTokens)),
@@ -199,17 +204,17 @@ function extendGroup(
 	while (true) {
 		const refIdx = ref.startIdx + minTokens + forward;
 		if (refIdx >= refTokens.length) break;
-		const refTok = refTokens[refIdx].normalized;
+		const refTok = refTokens[refIdx]?.normalized;
+		if (refTok === undefined) break;
 		let allMatch = true;
-		for (let i = 1; i < group.length; i++) {
-			const w = group[i];
+		for (const w of group.slice(1)) {
 			const t = fileTokens.get(w.path);
 			if (!t) {
 				allMatch = false;
 				break;
 			}
 			const idx = w.startIdx + minTokens + forward;
-			if (idx >= t.length || t[idx].normalized !== refTok) {
+			if (idx >= t.length || t[idx]?.normalized !== refTok) {
 				allMatch = false;
 				break;
 			}
@@ -222,17 +227,17 @@ function extendGroup(
 	while (true) {
 		const refIdx = ref.startIdx - backward - 1;
 		if (refIdx < 0) break;
-		const refTok = refTokens[refIdx].normalized;
+		const refTok = refTokens[refIdx]?.normalized;
+		if (refTok === undefined) break;
 		let allMatch = true;
-		for (let i = 1; i < group.length; i++) {
-			const w = group[i];
+		for (const w of group.slice(1)) {
 			const t = fileTokens.get(w.path);
 			if (!t) {
 				allMatch = false;
 				break;
 			}
 			const idx = w.startIdx - backward - 1;
-			if (idx < 0 || t[idx].normalized !== refTok) {
+			if (idx < 0 || t[idx]?.normalized !== refTok) {
 				allMatch = false;
 				break;
 			}
@@ -345,8 +350,8 @@ function signatureFor(
 	end: number,
 ): string {
 	const parts: string[] = [];
-	for (let i = start; i < end; i++) {
-		parts.push(tokens[i].normalized);
+	for (const token of tokens.slice(start, end)) {
+		parts.push(token.normalized);
 	}
 	// NUL separator: defensive against tokens that contain whitespace
 	// (e.g. JSX text nodes).
@@ -364,8 +369,8 @@ function hashWindow(
 	length: number,
 ): number {
 	let h = 5381;
-	for (let i = 0; i < length; i++) {
-		const t = tokens[start + i].normalized;
+	for (const token of tokens.slice(start, start + length)) {
+		const t = token.normalized;
 		for (let j = 0; j < t.length; j++) {
 			h = ((h << 5) + h) ^ t.charCodeAt(j);
 		}

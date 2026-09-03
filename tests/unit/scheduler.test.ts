@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchScheduler } from "../../src/tools/scheduler.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
 let tmpRoot: string;
 
 beforeEach(() => {
@@ -36,7 +44,7 @@ describe("scheduler.list_tasks", () => {
 			knownGaps: string[];
 		};
 		expect(res.tasks).toEqual([]);
-		expect(res.knownGaps[0]).toMatch(/No @Schedule decorators/);
+		expect(defined(res.knownGaps[0])).toMatch(/No @Schedule decorators/);
 	});
 
 	it("picks up @Schedule(cronExpr) method decorators with class + method context", () => {
@@ -60,11 +68,11 @@ export class Cleanup {
 			}>;
 		};
 		expect(res.tasks).toHaveLength(1);
-		expect(res.tasks[0].cronExpr).toBe("0 */5 * * *");
-		expect(res.tasks[0].source).toBe("decorator");
-		expect(res.tasks[0].className).toBe("Cleanup");
-		expect(res.tasks[0].methodName).toBe("runCleanup");
-		expect(res.tasks[0].confidence).toBe("high");
+		expect(defined(res.tasks[0]).cronExpr).toBe("0 */5 * * *");
+		expect(defined(res.tasks[0]).source).toBe("decorator");
+		expect(defined(res.tasks[0]).className).toBe("Cleanup");
+		expect(defined(res.tasks[0]).methodName).toBe("runCleanup");
+		expect(defined(res.tasks[0]).confidence).toBe("high");
 	});
 
 	it("picks up scheduler.register(name, cronExpr, …) call sites", () => {
@@ -95,6 +103,8 @@ scheduler.register("nightly-rotate", "0 0 * * *", () => {});
 			join(tmpRoot, "app/dyn.ts"),
 			`
 import { Schedule } from "@c9up/ream";
+
+
 const CRON = "0 0 * * *";
 export class Dyn {
   @Schedule(CRON)
@@ -105,8 +115,8 @@ export class Dyn {
 		const res = dispatchScheduler(tmpRoot, "scheduler.list_tasks") as {
 			tasks: Array<{ cronExpr?: string; confidence: string; notes: string[] }>;
 		};
-		expect(res.tasks[0].cronExpr).toBeUndefined();
-		expect(res.tasks[0].confidence).toBe("medium");
-		expect(res.tasks[0].notes.join(" ")).toMatch(/string literal/);
+		expect(defined(res.tasks[0]).cronExpr).toBeUndefined();
+		expect(defined(res.tasks[0]).confidence).toBe("medium");
+		expect(defined(res.tasks[0]).notes.join(" ")).toMatch(/string literal/);
 	});
 });

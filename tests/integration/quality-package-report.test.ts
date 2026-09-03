@@ -15,6 +15,15 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { dispatchQuality } from "../../src/tools/quality.js";
 import { resetCache } from "../../src/util/ts-static-parser.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, "..", "fixtures", "introspect-app");
 
@@ -49,7 +58,7 @@ describe("quality > package_report", () => {
 		) as ReportShape;
 
 		expect(result.packages.length).toBe(1);
-		const pkg = result.packages[0];
+		const pkg = defined(result.packages[0]);
 		expect(pkg.name).toBe("introspect-app-fixture");
 		expect(pkg.files).toBeGreaterThan(0);
 		expect(pkg.loc).toBeGreaterThan(0);
@@ -66,7 +75,7 @@ describe("quality > package_report", () => {
 			package: "introspect-app-fixture",
 		}) as ReportShape;
 		expect(result.packages.length).toBe(1);
-		expect(result.packages[0].name).toBe("introspect-app-fixture");
+		expect(defined(result.packages[0]).name).toBe("introspect-app-fixture");
 	});
 
 	it("returns the structured error shape when the package is unknown", () => {

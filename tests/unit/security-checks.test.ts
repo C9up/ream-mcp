@@ -23,6 +23,15 @@ import { reflectMetadataMissing } from "../../src/security/checks/reflect_metada
 import { sqlInterpolation } from "../../src/security/checks/sql_interpolation.js";
 import { xssHtmlRawOutput } from "../../src/security/checks/xss_html_raw_output.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 function makeCtx(
 	relPath: string,
 	source: string,
@@ -65,9 +74,9 @@ describe("sql_interpolation", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("sql_interpolation");
-		expect(findings[0].line).toBe(4);
-		expect(findings[0].excerpt).toContain("SELECT");
+		expect(defined(findings[0]).check).toBe("sql_interpolation");
+		expect(defined(findings[0]).line).toBe(4);
+		expect(defined(findings[0]).excerpt).toContain("SELECT");
 	});
 
 	it("does NOT flag prepared-statement placeholders", () => {
@@ -100,8 +109,8 @@ describe("sql_interpolation", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(2);
-		expect(findings[0].line).toBe(5);
-		expect(findings[1].line).toBe(6);
+		expect(defined(findings[0]).line).toBe(5);
+		expect(defined(findings[1]).line).toBe(6);
 	});
 
 	it("flags `sql.unsafe\\`...${x}\\`` tagged template (Prisma-style escape hatch)", () => {
@@ -115,7 +124,7 @@ describe("sql_interpolation", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("sql_interpolation");
+		expect(defined(findings[0]).check).toBe("sql_interpolation");
 	});
 
 	it("does NOT flag plain `sql\\`...${x}\\`` (Prisma / postgres.js safe parameterising tag)", () => {
@@ -145,7 +154,7 @@ describe("csrf_disabled", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("csrf_disabled");
+		expect(defined(findings[0]).check).toBe("csrf_disabled");
 	});
 
 	it("does NOT flag default-on blackhole with no `csrf` key", () => {
@@ -175,7 +184,7 @@ describe("xss_html_raw_output", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("xss_html_raw_output");
+		expect(defined(findings[0]).check).toBe("xss_html_raw_output");
 	});
 
 	it("does NOT flag `html\\`...\\`` (Lit / lit-html safe-by-default tag)", () => {
@@ -218,7 +227,7 @@ describe("cookie_missing_flags", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("cookie_missing_flags");
+		expect(defined(findings[0]).check).toBe("cookie_missing_flags");
 	});
 
 	it("does NOT flag a cookie with all three flags set", () => {
@@ -288,8 +297,8 @@ describe("reflect_metadata_missing", () => {
 			),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("reflect_metadata_missing");
-		expect(findings[0].line).toBe(1);
+		expect(defined(findings[0]).check).toBe("reflect_metadata_missing");
+		expect(defined(findings[0]).line).toBe(1);
 	});
 
 	it("does NOT flag when reflect-metadata is imported at the top", () => {
@@ -350,7 +359,7 @@ describe("missing_guard_on_mutation_route", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("missing_guard_on_mutation_route");
+		expect(defined(findings[0]).check).toBe("missing_guard_on_mutation_route");
 	});
 
 	it("does NOT flag when class carries `@UseGuards(...)`", () => {
@@ -390,8 +399,8 @@ describe("raw_error_not_reamerror", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("raw_error_not_reamerror");
-		expect(findings[0].line).toBe(3);
+		expect(defined(findings[0]).check).toBe("raw_error_not_reamerror");
+		expect(defined(findings[0]).line).toBe(3);
 	});
 
 	it("does NOT flag `throw new HttpException(...)` inside a controller", () => {
@@ -425,6 +434,6 @@ describe("raw_error_not_reamerror", () => {
 			].join("\n"),
 		);
 		expect(findings).toHaveLength(1);
-		expect(findings[0].check).toBe("raw_error_not_reamerror");
+		expect(defined(findings[0]).check).toBe("raw_error_not_reamerror");
 	});
 });

@@ -10,6 +10,15 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { core } from "../../index.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 let workDir: string;
 
 beforeEach(() => {
@@ -53,7 +62,7 @@ describe("ream-mcp > integration > docs.trace", () => {
 		const json = core.trace(workDir, "FR38");
 		const sites = JSON.parse(json);
 		expect(sites.length).toBe(1);
-		expect(sites[0].file).toBe("packages/atlas/src/BaseEntity.ts");
+		expect(defined(sites[0]).file).toBe("packages/atlas/src/BaseEntity.ts");
 	});
 
 	it("returns an empty list for an unknown id", () => {

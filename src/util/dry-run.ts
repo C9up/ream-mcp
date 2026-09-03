@@ -51,7 +51,7 @@ export function parseTrailingJson(stdout: string): Record<string, unknown> {
 	const lines = stdout.split("\n");
 	let trailing: string | null = null;
 	for (let i = lines.length - 1; i >= 0; i--) {
-		const trimmed = lines[i].trim();
+		const trimmed = (lines[i] ?? "").trim();
 		if (trimmed.length > 0) {
 			trailing = trimmed;
 			break;
@@ -200,14 +200,14 @@ function safeUtf8Decode(buf: Buffer): string {
 	// from the end past any continuations to find the start of the
 	// last code point.
 	let end = buf.length;
-	while (end > 0 && (buf[end - 1] & 0xc0) === 0x80) {
+	while (end > 0 && ((buf[end - 1] ?? 0) & 0xc0) === 0x80) {
 		end -= 1;
 	}
 	// Now buf[end-1] is a code-point start byte. If the resulting
 	// length doesn't match the expected sequence, drop the start byte
 	// too.
 	if (end > 0) {
-		const lead = buf[end - 1];
+		const lead = buf[end - 1] ?? 0;
 		const expected = lead < 0x80 ? 1 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : 4;
 		if (buf.length - (end - 1) < expected) {
 			end -= 1;

@@ -16,6 +16,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { walkWorkspacePackages } from "../../src/util/package-walker.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 let root: string;
 
 beforeEach(() => {
@@ -51,7 +60,7 @@ describe("walkWorkspacePackages", () => {
 
 		const found = walkWorkspacePackages(root);
 		expect(found.map((p) => p.name)).toEqual(["alpha", "zeta"]);
-		expect(found[0].mainEntry.endsWith("alpha/src/index.ts")).toBe(true);
+		expect(defined(found[0]).mainEntry.endsWith("alpha/src/index.ts")).toBe(true);
 	});
 
 	it("skips node_modules even when nested package.jsons live there", () => {
@@ -80,8 +89,8 @@ describe("walkWorkspacePackages", () => {
 			"lib/entry.ts",
 		);
 		const found = walkWorkspacePackages(root);
-		expect(found[0].name).toBe("custom");
-		expect(found[0].mainEntry.endsWith("lib/entry.ts")).toBe(true);
+		expect(defined(found[0]).name).toBe("custom");
+		expect(defined(found[0]).mainEntry.endsWith("lib/entry.ts")).toBe(true);
 	});
 
 	it("does not recurse INTO a package once `package.json` is found", () => {

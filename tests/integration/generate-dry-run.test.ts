@@ -21,6 +21,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchGenerate } from "../../src/tools/generate.js";
 import { canExecInTmp } from "../test-utils.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
 // Skip when the system tmpdir refuses exec (noexec mount on hardened
 // CIs). All `describe` blocks below dispatch through the Node stub
 // installed under tmpdir() via REAM_BIN; without exec permission the
@@ -140,8 +146,8 @@ describeIfTmpExec("generate.controller — dry-run by default", () => {
 		};
 		expect(Array.isArray(res.plannedFiles)).toBe(true);
 		expect(res.plannedFiles.length).toBe(1);
-		expect(res.plannedFiles[0].path).toBe("app/orders/OrdersController.ts");
-		expect(res.plannedFiles[0].exists).toBe(false);
+		expect(defined(res.plannedFiles[0]).path).toBe("app/orders/OrdersController.ts");
+		expect(defined(res.plannedFiles[0]).exists).toBe(false);
 		expect(res.confidence).toBe("high");
 		expect(res.knownGaps).toEqual([]);
 	});
@@ -225,10 +231,10 @@ describeIfTmpExec("generate.module — umbrella", () => {
 			confidence: string;
 		};
 		expect(res.plannedFiles.length).toBe(4);
-		expect(res.plannedFiles[0].path).toBe("app/orders/Order.ts");
-		expect(res.plannedFiles[1].path).toBe("app/orders/OrderController.ts");
-		expect(res.plannedFiles[2].path).toBe("app/orders/OrderValidator.ts");
-		expect(res.plannedFiles[3].path).toMatch(
+		expect(defined(res.plannedFiles[0]).path).toBe("app/orders/Order.ts");
+		expect(defined(res.plannedFiles[1]).path).toBe("app/orders/OrderController.ts");
+		expect(defined(res.plannedFiles[2]).path).toBe("app/orders/OrderValidator.ts");
+		expect(defined(res.plannedFiles[3]).path).toMatch(
 			/^database\/migrations\/\d+_order\.ts$/,
 		);
 	});
@@ -241,7 +247,7 @@ describeIfTmpExec("generate.migration — class-scoped name only", () => {
 		})) as { plannedFiles: Array<{ path: string }> };
 		// Migrations now have a 14-digit timestamp + 4-char random suffix
 		// before the underscore; just match the deterministic shape.
-		expect(res.plannedFiles[0].path).toMatch(
+		expect(defined(res.plannedFiles[0]).path).toMatch(
 			/^database\/migrations\/\d+_createorders\.ts$/,
 		);
 	});
@@ -257,7 +263,7 @@ describeIfTmpExec("generate.seeder — the name is the only positional", () => {
 		};
 		// Timestamp-prefixed, into the directory the app configures — so the
 		// planned path is whatever the command reports, never a guess.
-		expect(res.plannedFiles[0].path).toMatch(
+		expect(defined(res.plannedFiles[0]).path).toMatch(
 			/^database\/seeders\/\d+_UserSeeder\.ts$/,
 		);
 		expect(res.confidence).toBe("high");
@@ -326,7 +332,7 @@ process.stdout.write(JSON.stringify(payload) + "\\n");
 			plannedFilesOverflowPath?: string;
 			knownGaps: string[];
 		};
-		expect(res.plannedFiles[0].contentTruncated).toBe(true);
+		expect(defined(res.plannedFiles[0]).contentTruncated).toBe(true);
 		expect(res.truncated).toBe(true);
 		expect(res.plannedFilesOverflowPath).toMatch(/planned-files\.log$/);
 		expect(res.knownGaps.some((g) => g.includes("8 KB"))).toBe(true);

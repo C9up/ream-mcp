@@ -15,6 +15,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchMigration } from "../../src/tools/migration.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, "..", "fixtures", "migration-app");
 
@@ -73,10 +82,10 @@ describe("migration > run", () => {
 			dryRun: true,
 		})) as DryRunShape;
 		expect(result.wouldRun.length).toBe(2);
-		expect(result.wouldRun[0].id).toBe("1700000000_create_users");
-		expect(result.wouldRun[0].sql).toContain("CREATE TABLE");
-		expect(result.wouldRun[0].sql).toContain("users");
-		expect(result.wouldRun[1].sql).toContain("posts");
+		expect(defined(result.wouldRun[0]).id).toBe("1700000000_create_users");
+		expect(defined(result.wouldRun[0]).sql).toContain("CREATE TABLE");
+		expect(defined(result.wouldRun[0]).sql).toContain("users");
+		expect(defined(result.wouldRun[1]).sql).toContain("posts");
 	});
 
 	it("refuses dryRun:false without confirm:true", async () => {

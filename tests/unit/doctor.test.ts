@@ -4,6 +4,15 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchDoctor } from "../../src/tools/doctor.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 interface DoctorResult {
 	confidence: "high" | "medium" | "low";
 	knownGaps: string[];
@@ -138,7 +147,7 @@ describe("ream-mcp > tools > doctor.health", () => {
 			hint: string;
 		}>;
 		expect(missing.some((m) => m.package === "@scope/atom")).toBe(true);
-		expect(missing[0].hint).toContain("pnpm --filter");
+		expect(defined(missing[0]).hint).toContain("pnpm --filter");
 	});
 
 	it("lists built NAPI binaries when an artefact exists alongside package.json", async () => {

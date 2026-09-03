@@ -16,6 +16,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildDepGraph, toDot } from "../../src/util/dep-graph-builder.js";
 import type { WorkspacePackage } from "../../src/util/package-walker.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 let tmpRoot: string;
 
 beforeEach(() => {
@@ -57,7 +66,7 @@ describe("buildDepGraph", () => {
 		const graph = buildDepGraph(project, tmpRoot, "file", []);
 		expect(graph.nodes.length).toBe(2);
 		expect(graph.cycles.length).toBe(1);
-		expect(graph.cycles[0].sort()).toEqual(["src/a.ts", "src/b.ts"]);
+		expect(defined(graph.cycles[0]).sort()).toEqual(["src/a.ts", "src/b.ts"]);
 	});
 
 	it("does NOT include external bare specifiers as nodes", () => {
@@ -89,7 +98,7 @@ describe("buildDepGraph", () => {
 		const project = setupProject();
 		project.addSourceFilesAtPaths(join(tmpRoot, "src", "*.ts"));
 		const graph = buildDepGraph(project, tmpRoot, "file", []);
-		expect(graph.cycles[0][0]).toBe("src/a.ts");
+		expect(defined(defined(graph.cycles[0])[0])).toBe("src/a.ts");
 	});
 
 	it("resolves workspace sub-path imports to .tsx files (UI packages)", () => {

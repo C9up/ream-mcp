@@ -14,6 +14,15 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { core } from "../../index.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 let workDir: string;
 let envBackup: string | undefined;
 
@@ -83,7 +92,7 @@ describe("ream-mcp > integration > docs.search", () => {
 		expect(result.hits.length).toBeGreaterThan(0);
 		// The Atlas entity-declaration chunk should rank top-1 for this
 		// query.
-		const top = result.hits[0];
+		const top = defined(result.hits[0]);
 		expect(top.source.file).toContain("packages/atlas/README.md");
 		expect(top.content.toLowerCase()).toContain("entity");
 	});

@@ -2,6 +2,15 @@ import { Project } from "ts-morph";
 import { describe, expect, it } from "vitest";
 import { excerpt, lineOf } from "../../src/security/checks/_helpers.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 function fileWith(source: string) {
 	const project = new Project({ useInMemoryFileSystem: true });
 	return project.createSourceFile("t.ts", source);
@@ -10,7 +19,7 @@ function fileWith(source: string) {
 describe("ream-mcp > security/checks/_helpers > lineOf", () => {
 	it("returns the 1-indexed start line of a node", () => {
 		const sf = fileWith("const a = 1;\nconst b = 2;\nconst c = 3;\n");
-		const decl = sf.getVariableDeclarations()[2];
+		const decl = defined(sf.getVariableDeclarations()[2]);
 		expect(lineOf(decl)).toBe(3);
 	});
 });

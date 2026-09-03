@@ -16,6 +16,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchInker } from "../../src/tools/inker.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 interface ListResult {
 	templates: Array<{
 		name: string;
@@ -64,7 +73,7 @@ describe("inker.list_templates > lint", () => {
 		})) as ListResult;
 
 		expect(res.knownGaps.join(" ")).toMatch(/could not be loaded/);
-		expect(res.templates[0].error).toBeUndefined();
+		expect(defined(res.templates[0]).error).toBeUndefined();
 	});
 
 	it("attaches the parse error a template actually has", async () => {

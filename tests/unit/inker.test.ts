@@ -6,6 +6,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchInker } from "../../src/tools/inker.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 let tmpRoot: string;
 
 beforeEach(() => {
@@ -53,7 +62,7 @@ describe("inker.list_templates", () => {
 			root: "custom",
 		})) as { templates: Array<{ name: string }> };
 		expect(res.templates).toHaveLength(1);
-		expect(res.templates[0].name).toBe("x");
+		expect(defined(res.templates[0]).name).toBe("x");
 	});
 });
 

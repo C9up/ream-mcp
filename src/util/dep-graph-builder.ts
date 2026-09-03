@@ -235,8 +235,8 @@ function resolveSpecifier(
 	}
 	const segments = s.split("/");
 	const pkgName = s.startsWith("@")
-		? `${segments[0]}/${segments[1] ?? ""}`
-		: segments[0];
+		? `${segments[0] ?? ""}/${segments[1] ?? ""}`
+		: (segments[0] ?? "");
 	const pkg = byName.get(pkgName);
 	if (!pkg) return null;
 	if (segments.length === (s.startsWith("@") ? 2 : 1)) {
@@ -318,10 +318,14 @@ function tarjanSccs(nodes: string[], edges: DepEdge[]): string[][] {
 		stack.push({ v: start, neighbors: adj.get(start) ?? [], nIdx: 0 });
 
 		while (stack.length > 0) {
-			const frame = stack[stack.length - 1];
+			// The loop condition guarantees a top frame; naming the miss is what
+			// carries that guarantee into the reads below.
+			const frame = stack.at(-1);
+			if (frame === undefined) break;
 			if (frame.nIdx < frame.neighbors.length) {
 				const w = frame.neighbors[frame.nIdx];
 				frame.nIdx += 1;
+				if (w === undefined) continue;
 				if (!indices.has(w)) {
 					indices.set(w, index);
 					lowlinks.set(w, index);
@@ -353,8 +357,8 @@ function tarjanSccs(nodes: string[], edges: DepEdge[]): string[][] {
 				} while (popped !== v);
 				sccs.push(component);
 			}
-			if (stack.length > 0) {
-				const parent = stack[stack.length - 1];
+			const parent = stack.at(-1);
+			if (parent !== undefined) {
 				const parentLow = lowlinks.get(parent.v) ?? Number.POSITIVE_INFINITY;
 				if (vLow < parentLow) lowlinks.set(parent.v, vLow);
 			}
@@ -365,15 +369,16 @@ function tarjanSccs(nodes: string[], edges: DepEdge[]): string[][] {
 	for (const c of sccs) {
 		if (c.length >= 2) {
 			cycles.push(rotateLex(c));
-		} else if (c.length === 1) {
-			const self = c[0];
-			if ((adj.get(self) ?? []).includes(self)) {
+		} else {
+			const [self] = c;
+			if (self !== undefined && (adj.get(self) ?? []).includes(self)) {
 				cycles.push([self]);
 			}
 		}
 	}
 	cycles.sort((a, b) => {
-		if (a[0] !== b[0]) return a[0].localeCompare(b[0]);
+		const [firstA = "", firstB = ""] = [a[0], b[0]];
+		if (firstA !== firstB) return firstA.localeCompare(firstB);
 		return a.length - b.length;
 	});
 	return cycles;
@@ -381,8 +386,12 @@ function tarjanSccs(nodes: string[], edges: DepEdge[]): string[][] {
 
 function rotateLex(cycle: string[]): string[] {
 	let minIdx = 0;
-	for (let i = 1; i < cycle.length; i++) {
-		if (cycle[i].localeCompare(cycle[minIdx]) < 0) minIdx = i;
+	let min = cycle[0] ?? "";
+	for (const [i, name] of cycle.entries()) {
+		if (name.localeCompare(min) < 0) {
+			min = name;
+			minIdx = i;
+		}
 	}
 	return [...cycle.slice(minIdx), ...cycle.slice(0, minIdx)];
 }

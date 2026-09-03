@@ -15,6 +15,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchMigration } from "../../src/tools/migration.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, "..", "fixtures", "migration-app");
 
@@ -75,7 +84,7 @@ describe("migration > rollback", () => {
 		})) as DryRollbackShape;
 		expect(result.wouldRollback.length).toBe(2);
 		// Reverse SQL is DROP TABLE for both fixtures.
-		expect(result.wouldRollback[0].sql).toContain("DROP TABLE");
+		expect(defined(result.wouldRollback[0]).sql).toContain("DROP TABLE");
 		expect(result.wouldRollback.every((r) => r.batch === 1)).toBe(true);
 	});
 

@@ -241,8 +241,7 @@ function scanInkerTemplates(
 			continue;
 		}
 		const lines = text.split("\n");
-		for (let i = 0; i < lines.length; i++) {
-			const raw = lines[i];
+		for (const [i, raw] of lines.entries()) {
 			if (!raw.includes("{{{")) continue;
 			const trimmed = raw.replace(/\t/g, "    ").trim().replace(/\r$/, "");
 			const elided =

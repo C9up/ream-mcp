@@ -12,11 +12,20 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
 import {
 	atomicWrite,
 	findStatusLine,
 	replaceStatusLine,
 } from "../../src/util/yaml-atomic.js";
+
+
 
 const SAMPLE = [
 	"# header comment",
@@ -126,7 +135,7 @@ describe("atomicWrite", () => {
 		const written = readFileSync(target, "utf8");
 		expect(written).toBe(r.text);
 		// Diff is exactly one value swap.
-		expect(written.split("\n")[7]).toContain("review");
+		expect(defined(written.split("\n")[7])).toContain("review");
 	});
 
 	it("does not leave a stray tempfile behind on success", async () => {

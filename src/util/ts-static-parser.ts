@@ -434,9 +434,10 @@ function evalPropertyAccess(
 				const init = d.getInitializer();
 				if (!init) continue;
 				const evaluated = evalWithVisited(init, visited);
-				if (isPlainRecord(evaluated) && propName in evaluated) {
-					return evaluated[propName];
-				}
+				const found = isPlainRecord(evaluated)
+					? evaluated[propName]
+					: undefined;
+				if (found !== undefined) return found;
 			}
 		}
 	}

@@ -289,13 +289,11 @@ const ARTIFACT_STATUS = /^Status:\s*(\S+)/m;
 const ARTIFACT_TITLE = /^#\s+(.+?)$/m;
 
 function extractArtifactStatus(body: string): string {
-	const m = ARTIFACT_STATUS.exec(body);
-	return m ? m[1] : "unknown";
+	return ARTIFACT_STATUS.exec(body)?.[1] ?? "unknown";
 }
 
 function extractArtifactTitle(body: string): string {
-	const m = ARTIFACT_TITLE.exec(body);
-	return m ? m[1].trim() : "";
+	return ARTIFACT_TITLE.exec(body)?.[1]?.trim() ?? "";
 }
 
 function findStoryInParsed(
@@ -486,16 +484,16 @@ function collectRequirementIds(
 		const text = safeRead(full);
 		if (text === null) continue;
 		const lines = text.split("\n");
-		for (let i = 0; i < lines.length; i++) {
+		for (const [i, line] of lines.entries()) {
 			REQUIREMENT_ID.lastIndex = 0;
-			let m: RegExpExecArray | null = REQUIREMENT_ID.exec(lines[i]);
+			let m: RegExpExecArray | null = REQUIREMENT_ID.exec(line);
 			while (m !== null) {
-				const id = `${m[1]}-${m[2]}`;
+				const id = `${m[1] ?? ""}-${m[2] ?? ""}`;
 				if (!seen.has(id)) {
 					seen.add(id);
 					out.push({ id, sourceFile: name, line: i + 1 });
 				}
-				m = REQUIREMENT_ID.exec(lines[i]);
+				m = REQUIREMENT_ID.exec(line);
 			}
 		}
 	}
@@ -687,8 +685,8 @@ function readSprintStatus(bmadRoot: string): Map<string, string> {
 			inDevelopmentStatus = false;
 		}
 		if (!inDevelopmentStatus) continue;
-		const m = re.exec(line);
-		if (m) map.set(m[1], m[2]);
+		const [, key, value] = re.exec(line) ?? [];
+		if (key !== undefined && value !== undefined) map.set(key, value);
 	}
 	return map;
 }

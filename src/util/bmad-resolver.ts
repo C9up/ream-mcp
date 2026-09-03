@@ -112,9 +112,8 @@ function readReamrcBmadRoot(root: string): string | null {
 		project.addSourceFileAtPath(rcPath);
 		const sf = project.getSourceFile(rcPath);
 		if (!sf) return null;
-		const exported = sf.getExportedDeclarations().get("default");
-		if (!exported || exported.length === 0) return null;
-		const decl = exported[0];
+		const [decl] = sf.getExportedDeclarations().get("default") ?? [];
+		if (decl === undefined) return null;
 		const objLit = unwrapToObjectLiteral(decl);
 		if (!objLit) return null;
 		const prop = objLit.getProperty("bmadRoot");

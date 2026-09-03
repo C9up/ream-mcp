@@ -74,6 +74,9 @@ export function parseEpicsFile(text: string): ParseResult {
 	for (let i = 0; i < lines.length; i++) {
 		const lineNumber = i + 1;
 		const line = lines[i];
+		// `i` is bounded by the loop; naming the miss carries that bound into
+		// every read below.
+		if (line === undefined) continue;
 
 		// Track fenced code-block state so a quoted `## Epic 99: ...`
 		// inside ``` ``` ``` is not parsed as a real heading.
@@ -102,6 +105,11 @@ export function parseEpicsFile(text: string): ParseResult {
 		}
 
 		const [, , hashes, , kind, idText, title, badgeRaw] = match;
+		// Every group the parser reads is required by HEADING, so a match
+		// carries them; the guard is where that is stated.
+		if (hashes === undefined || idText === undefined || title === undefined) {
+			continue;
+		}
 		const level = hashes.length;
 		const badge = badgeRaw === undefined ? null : badgeRaw;
 
@@ -119,9 +127,11 @@ export function parseEpicsFile(text: string): ParseResult {
 				);
 				continue;
 			}
+			const [, epicIdText] = idMatch;
+			if (epicIdText === undefined) continue;
 			closeEpic(lineNumber - 1);
 			currentEpic = {
-				id: idMatch[1],
+				id: epicIdText,
 				title: title.trim(),
 				statusBadge: badge,
 				startLine: lineNumber,
@@ -146,8 +156,8 @@ export function parseEpicsFile(text: string): ParseResult {
 			);
 			continue;
 		}
-		const epicId = idMatch[1];
-		const storyNum = idMatch[2];
+		const [, epicId, storyNum] = idMatch;
+		if (epicId === undefined || storyNum === undefined) continue;
 		const fullId = `${epicId}.${storyNum}`;
 
 		if (currentEpic === null || currentEpic.id !== epicId) {
@@ -157,6 +167,7 @@ export function parseEpicsFile(text: string): ParseResult {
 			continue;
 		}
 
+		const owningEpic = currentEpic;
 		closeStory(lineNumber - 1);
 		currentStory = {
 			id: fullId,
@@ -167,7 +178,7 @@ export function parseEpicsFile(text: string): ParseResult {
 			startLine: lineNumber,
 			endLine: lineNumber,
 		};
-		currentEpic.stories.push(currentStory);
+		owningEpic.stories.push(currentStory);
 	}
 
 	closeEpic(lines.length);

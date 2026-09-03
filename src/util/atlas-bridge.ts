@@ -132,10 +132,10 @@ function loadReamrcConfigObject(
 	project.addSourceFileAtPath(rcPath);
 	const sf = project.getSourceFile(rcPath);
 	if (!sf) return null;
-	const exported = sf.getExportedDeclarations().get("default");
-	if (!exported || exported.length === 0) return null;
+	const [firstExport] = sf.getExportedDeclarations().get("default") ?? [];
+	if (firstExport === undefined) return null;
 	// `export default defineConfig({...})` or `export default { database: {...} }`.
-	return unwrapToObjectLiteral(exported[0]);
+	return unwrapToObjectLiteral(firstExport);
 }
 
 /** Get a property whose initializer is an object literal, or null. */
@@ -241,9 +241,9 @@ function resolveMigrationsTableFromReamrc(root: string): string | null {
 		project.addSourceFileAtPath(rcPath);
 		const sf = project.getSourceFile(rcPath);
 		if (!sf) return null;
-		const exported = sf.getExportedDeclarations().get("default");
-		if (!exported || exported.length === 0) return null;
-		const objLit = unwrapToObjectLiteral(exported[0]);
+		const [firstExport] = sf.getExportedDeclarations().get("default") ?? [];
+		if (firstExport === undefined) return null;
+		const objLit = unwrapToObjectLiteral(firstExport);
 		if (!objLit) return null;
 
 		const dbProp = objLit.getProperty("database");
@@ -366,5 +366,5 @@ export function splitMigrationName(filename: string): {
 } {
 	const match = filename.match(FILENAME_SPLIT);
 	if (!match) return { id: filename, name: filename };
-	return { id: filename, name: match[2] };
+	return { id: filename, name: match[2] ?? filename };
 }

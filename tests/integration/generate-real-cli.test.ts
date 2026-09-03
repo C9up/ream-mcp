@@ -28,6 +28,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchGenerate } from "../../src/tools/generate.js";
 import { canExecInTmp } from "../test-utils.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 // packages/ream-mcp/tests/integration → packages/ream-cli/target/debug
 const CLI_DEBUG = resolve(HERE, "../../../ream-cli/target/debug/ream");
@@ -79,10 +88,10 @@ describeIfBuilt("generate.* against the real ream-cli binary (D1)", () => {
 			knownGaps: string[];
 		};
 		expect(res.plannedFiles).toHaveLength(1);
-		expect(res.plannedFiles[0].path).toBe("app/orders/OrdersController.ts");
-		expect(res.plannedFiles[0].exists).toBe(false);
-		expect(res.plannedFiles[0].content).toContain("OrdersController");
-		expect(res.plannedFiles[0].content).toContain("@implements FR");
+		expect(defined(res.plannedFiles[0]).path).toBe("app/orders/OrdersController.ts");
+		expect(defined(res.plannedFiles[0]).exists).toBe(false);
+		expect(defined(res.plannedFiles[0]).content).toContain("OrdersController");
+		expect(defined(res.plannedFiles[0]).content).toContain("@implements FR");
 		expect(res.confidence).toBe("high");
 	});
 
@@ -112,10 +121,10 @@ describeIfBuilt("generate.* against the real ream-cli binary (D1)", () => {
 			confidence: string;
 		};
 		expect(res.plannedFiles).toHaveLength(4);
-		expect(res.plannedFiles[0].path).toBe("app/orders/Order.ts");
-		expect(res.plannedFiles[1].path).toBe("app/orders/OrderController.ts");
-		expect(res.plannedFiles[2].path).toBe("app/orders/OrderValidator.ts");
-		expect(res.plannedFiles[3].path).toMatch(
+		expect(defined(res.plannedFiles[0]).path).toBe("app/orders/Order.ts");
+		expect(defined(res.plannedFiles[1]).path).toBe("app/orders/OrderController.ts");
+		expect(defined(res.plannedFiles[2]).path).toBe("app/orders/OrderValidator.ts");
+		expect(defined(res.plannedFiles[3]).path).toMatch(
 			/^database\/migrations\/\d{8}\d{3}_order\.ts$/,
 		);
 		// Story 33.4 H7: scope-cut warnings must be surfaced.

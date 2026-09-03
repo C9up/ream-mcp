@@ -9,6 +9,15 @@ import { describe, expect, it } from "vitest";
 
 import { parseEpicsFile, sliceSection } from "../../src/util/bmad-parser.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 describe("parseEpicsFile", () => {
 	it("parses a simple Epic with two Stories", () => {
 		const text = [
@@ -22,11 +31,11 @@ describe("parseEpicsFile", () => {
 		const r = parseEpicsFile(text);
 		expect(r.parserWarnings).toEqual([]);
 		expect(r.epics).toHaveLength(1);
-		expect(r.epics[0].id).toBe("1");
-		expect(r.epics[0].title).toBe("Foundations");
-		expect(r.epics[0].stories).toHaveLength(2);
-		expect(r.epics[0].stories[0].id).toBe("1.1");
-		expect(r.epics[0].stories[1].id).toBe("1.2");
+		expect(defined(r.epics[0]).id).toBe("1");
+		expect(defined(r.epics[0]).title).toBe("Foundations");
+		expect(defined(r.epics[0]).stories).toHaveLength(2);
+		expect(defined(defined(r.epics[0]).stories[0]).id).toBe("1.1");
+		expect(defined(defined(r.epics[0]).stories[1]).id).toBe("1.2");
 	});
 
 	it("tolerates emoji prefixes on the heading", () => {
@@ -37,10 +46,10 @@ describe("parseEpicsFile", () => {
 		].join("\n");
 		const r = parseEpicsFile(text);
 		expect(r.parserWarnings).toEqual([]);
-		expect(r.epics[0].id).toBe("7");
-		expect(r.epics[0].title).toBe("Scheduler");
-		expect(r.epics[0].stories[0].id).toBe("7.3");
-		expect(r.epics[0].stories[0].title).toBe("Cron expressions");
+		expect(defined(r.epics[0]).id).toBe("7");
+		expect(defined(r.epics[0]).title).toBe("Scheduler");
+		expect(defined(defined(r.epics[0]).stories[0]).id).toBe("7.3");
+		expect(defined(defined(r.epics[0]).stories[0]).title).toBe("Cron expressions");
 	});
 
 	it("captures a trailing status badge on Story headings", () => {
@@ -50,7 +59,7 @@ describe("parseEpicsFile", () => {
 		].join("\n");
 		const r = parseEpicsFile(text);
 		expect(r.parserWarnings).toEqual([]);
-		const story = r.epics[0].stories[0];
+		const story = defined(defined(r.epics[0]).stories[0]);
 		expect(story.title).toBe("Backfill column");
 		expect(story.statusBadge).toBe("done");
 	});
@@ -63,9 +72,9 @@ describe("parseEpicsFile", () => {
 		].join("\n");
 		const r = parseEpicsFile(text);
 		expect(r.epics).toHaveLength(1);
-		expect(r.epics[0].stories).toEqual([]);
+		expect(defined(r.epics[0]).stories).toEqual([]);
 		expect(r.parserWarnings.length).toBeGreaterThan(0);
-		expect(r.parserWarnings[0]).toContain("Story 7.1");
+		expect(defined(r.parserWarnings[0])).toContain("Story 7.1");
 	});
 
 	it("warns on heading-shaped lines that mention Epic/Story but don't match", () => {
@@ -89,7 +98,7 @@ describe("parseEpicsFile", () => {
 		].join("\n");
 		const r = parseEpicsFile(text);
 		expect(r.epics.map((e) => e.id)).toEqual(["28", "33"]);
-		expect(r.epics[1].stories.map((s) => s.id)).toEqual(["33.2", "33.7"]);
+		expect(defined(r.epics[1]).stories.map((s) => s.id)).toEqual(["33.2", "33.7"]);
 	});
 
 	it("records start/end line numbers for sliceSection consumers", () => {
@@ -104,7 +113,7 @@ describe("parseEpicsFile", () => {
 			"## Epic 2: Baz",
 		].join("\n");
 		const r = parseEpicsFile(text);
-		const story = r.epics[0].stories[0];
+		const story = defined(defined(r.epics[0]).stories[0]);
 		expect(story.startLine).toBe(5);
 		expect(story.endLine).toBe(7);
 		expect(sliceSection(text, story.startLine, story.endLine)).toBe(

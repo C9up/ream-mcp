@@ -12,6 +12,15 @@ import { describe, expect, it } from "vitest";
 
 import { findDuplicates } from "../../src/util/dup-detector.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
+
+
 function inMemoryProject(files: Record<string, string>): Project {
 	const project = new Project({ useInMemoryFileSystem: true });
 	for (const [path, content] of Object.entries(files)) {
@@ -43,7 +52,7 @@ describe("findDuplicates", () => {
 			minLines: 3,
 		});
 		expect(result.duplicates.length).toBeGreaterThan(0);
-		const top = result.duplicates[0];
+		const top = defined(result.duplicates[0]);
 		expect(top.similarity).toBe(1.0);
 		expect(top.files.map((f) => f.path).sort()).toEqual(["a.ts", "b.ts"]);
 	});
@@ -158,7 +167,7 @@ describe("findDuplicates", () => {
 			minLines: 2,
 		});
 		expect(result.duplicates.length).toBeGreaterThan(0);
-		expect(result.duplicates[0].tokens).toBeGreaterThan(20);
+		expect(defined(result.duplicates[0]).tokens).toBeGreaterThan(20);
 	});
 
 	it("skips files larger than 1 MB and records them in `skipped`", () => {

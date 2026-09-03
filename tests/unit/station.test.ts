@@ -6,6 +6,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchStation } from "../../src/tools/station.js";
 
+/** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
+function defined<T>(value: T | null | undefined): T {
+	if (value == null) throw new Error("expected a defined value");
+	return value;
+}
+
+
 let tmpRoot: string;
 
 beforeEach(() => {
@@ -32,7 +39,7 @@ describe("station.list_resources", () => {
 			knownGaps: string[];
 		};
 		expect(res.resources).toEqual([]);
-		expect(res.knownGaps[0]).toMatch(/No defineResource/);
+		expect(defined(res.knownGaps[0])).toMatch(/No defineResource/);
 	});
 
 	it("extracts name + entity + actions from a literal call", () => {
@@ -57,10 +64,10 @@ export const articleResource = defineResource({
 			}>;
 		};
 		expect(res.resources).toHaveLength(1);
-		expect(res.resources[0].name).toBe("articles");
-		expect(res.resources[0].entity).toBe("Article");
-		expect(res.resources[0].actions).toEqual(["list", "show", "create"]);
-		expect(res.resources[0].confidence).toBe("high");
+		expect(defined(res.resources[0]).name).toBe("articles");
+		expect(defined(res.resources[0]).entity).toBe("Article");
+		expect(defined(res.resources[0]).actions).toEqual(["list", "show", "create"]);
+		expect(defined(res.resources[0]).confidence).toBe("high");
 	});
 
 	it("drops to medium confidence when name is omitted (runtime slug-derives from entity)", () => {
@@ -68,6 +75,8 @@ export const articleResource = defineResource({
 			join(tmpRoot, "app/resources.ts"),
 			`
 import { defineResource } from "@c9up/station";
+
+
 class Order {}
 export const orderResource = defineResource({ entity: Order });
 `,
@@ -79,8 +88,8 @@ export const orderResource = defineResource({ entity: Order });
 				notes: string[];
 			}>;
 		};
-		expect(res.resources[0].entity).toBe("Order");
-		expect(res.resources[0].confidence).toBe("medium");
-		expect(res.resources[0].notes.join(" ")).toMatch(/kebab-case/);
+		expect(defined(res.resources[0]).entity).toBe("Order");
+		expect(defined(res.resources[0]).confidence).toBe("medium");
+		expect(defined(res.resources[0]).notes.join(" ")).toMatch(/kebab-case/);
 	});
 });
