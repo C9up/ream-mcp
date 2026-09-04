@@ -90,7 +90,11 @@ describeIfBuilt("generate.* against the real ream-cli binary (D1)", () => {
 		);
 		expect(defined(res.plannedFiles[0]).exists).toBe(false);
 		expect(defined(res.plannedFiles[0]).content).toContain("OrdersController");
-		expect(defined(res.plannedFiles[0]).content).toContain("@implements FR");
+		// The body the CLI planned, not just its name: a controller that does not
+		// import HttpContext is not the stub ream-cli ships.
+		expect(defined(res.plannedFiles[0]).content).toContain(
+			"import type { HttpContext } from '@c9up/ream'",
+		);
 		expect(res.confidence).toBe("high");
 	});
 
@@ -107,7 +111,7 @@ describeIfBuilt("generate.* against the real ream-cli binary (D1)", () => {
 			"utf8",
 		);
 		expect(written).toContain("OrdersController");
-		expect(written).toContain("@implements FR");
+		expect(written).toContain("import type { HttpContext } from '@c9up/ream'");
 	});
 
 	it("make:module umbrella: 4 planned files + warnings", async () => {
