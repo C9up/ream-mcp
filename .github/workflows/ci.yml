@@ -142,7 +142,11 @@ jobs:
         # stalls on the win32 runner and hangs the suite. BM25 fallback is tested.
         env:
           REAM_MCP_DISABLE_EMBEDDINGS: '1'
-        run: pnpm exec vitest run --coverage --reporter=default --reporter=json --outputFile=test-results.json
+        # No --coverage here: this matrix proves the NAPI binary loads on each
+        # platform, and each one skips a different set of tests (win32 skips 44).
+        # Gating coverage on the slice a platform happens to run sets the floor
+        # by whichever skips the most. It is measured once, on the host job.
+        run: pnpm exec vitest run --reporter=default --reporter=json --outputFile=test-results.json
         shell: bash
 
       - name: Smoke gate — tests ran AND some passed (Linux/macOS)
