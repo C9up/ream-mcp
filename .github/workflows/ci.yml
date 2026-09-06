@@ -216,7 +216,7 @@ jobs:
         with:
           key: cargo-tests
           cache-on-failure: true
-      - run: cargo test --workspace
+      - run: cargo test --locked --workspace
         # Disable embeddings here too: an indexer test calls embed_batch, which
         # lazily downloads the ONNX runtime (~300MB) and stalls on the runner.
         env:
