@@ -32,9 +32,14 @@ let tmpExecCache: boolean | null = null;
 export function canExecInTmp(): boolean {
 	if (tmpExecCache !== null) return tmpExecCache;
 	const probeDir = mkdtempSync(join(tmpdir(), "ream-mcp-exec-probe-"));
-	const probePath = join(probeDir, "probe.sh");
+	const probePath = join(probeDir, "probe");
 	try {
-		writeFileSync(probePath, "#!/bin/sh\nexit 0\n");
+		// The same shape the suites write: a Node stub behind `env`, not a shell
+		// script. A `#!/bin/sh` probe answers a question nobody asked — a sandbox
+		// can allow `/bin/sh` and still refuse to spawn `env`/`node` from an
+		// executable written under tmpdir, and the guard then let the suites run
+		// straight into the EPERM it exists to avoid.
+		writeFileSync(probePath, "#!/usr/bin/env node\nprocess.exit(0)\n");
 		chmodSync(probePath, 0o755);
 		const result = spawnSync(probePath, [], {
 			stdio: "ignore",
