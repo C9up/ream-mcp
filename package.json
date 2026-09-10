@@ -1,7 +1,7 @@
 {
   "name": "@c9up/ream-mcp",
   "version": "0.1.18",
-  "description": "Ream MCP server \u2014 agent-ready framework assistant (docs, introspection, actions, BMAD).",
+  "description": "Ream MCP server — agent-ready framework assistant (docs, introspection, actions, BMAD).",
   "license": "MIT",
   "type": "module",
   "main": "./src/index.ts",
@@ -65,7 +65,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "ts-morph": "^28.0.0"
   },
   "peerDependencies": {
@@ -77,13 +77,13 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.10",
+    "@biomejs/biome": "^2.5.12",
     "@c9up/atlas": "^0.3.3",
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^4.1.2",
-    "tsx": "^4.0.0",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.2"
+    "@types/node": "^22.20.1",
+    "@vitest/coverage-v8": "4.1.11",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=22.0.0"
