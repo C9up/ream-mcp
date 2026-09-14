@@ -18,7 +18,22 @@ sqlite-vec = "0.1"
 # Markdown AST walker.
 pulldown-cmark = { version = "0.13", default-features = false }
 # Embeddings via ONNX runtime + BAAI/bge-small-en-v1.5.
-fastembed = "6"
+#
+# `default-features = false` to get OFF native-tls. fastembed's defaults are
+# `ort-download-binaries-native-tls` + `hf-hub-native-tls`, and native-tls
+# means openssl-sys, which links a SHARED libssl. The published `.node` then
+# needs `libssl.so.3` on the user's machine — measured — and a machine with a
+# different OpenSSL cannot load it at all. rustls is pure Rust and links
+# nothing.
+#
+# `ort-load-dynamic` is the feature form of what the `ort` pin below does by
+# hand, and it replaces `ort-download-binaries`: linking a prebuilt ONNX at
+# build time is the thing that was deliberately avoided.
+fastembed = { version = "6", default-features = false, features = [
+    "hf-hub-rustls-tls",
+    "ort-load-dynamic",
+    "image-models",
+] }
 # Force `ort` (pulled by fastembed) to load ONNX Runtime dynamically at runtime
 # rather than linking a prebuilt at build time. `ort` ships no prebuilt for some
 # targets (e.g. x86_64-apple-darwin under cross-compile), which breaks the NAPI

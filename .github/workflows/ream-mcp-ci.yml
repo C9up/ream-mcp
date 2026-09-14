@@ -129,6 +129,27 @@ jobs:
         env:
           CARGO_BUILD_TARGET: ${{ matrix.target }}
 
+      - name: The artefact must not need a system OpenSSL
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          # Added after a published 0.1.18 binary was found linking libssl.so.3,
+          # libcrypto.so.3 and libz.so.1: a prebuilt that needs a system library
+          # cannot load on a machine that has a different one, which is most of
+          # the machines that wanted a prebuilt. fastembed's default features
+          # pull native-tls; the crate now asks for rustls instead.
+          artefact="index.${{ matrix.suffix }}.node"
+          if [ "$(uname)" = "Darwin" ]; then
+            deps=$(otool -L "$artefact")
+          else
+            deps=$(ldd "$artefact")
+          fi
+          echo "$deps"
+          if printf '%s' "$deps" | grep -qiE 'libssl|libcrypto|libonnxruntime'; then
+            echo "::error::$artefact links a system OpenSSL or ONNX Runtime — check that fastembed is still on rustls and ort on load-dynamic."
+            exit 1
+          fi
+
       - name: Build TypeScript (dist/)
         if: matrix.test
         # build:ts only (tsc) — the .node was already built by "Build NAPI binary";
