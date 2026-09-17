@@ -12,8 +12,8 @@
       "import": "./src/index.ts"
     },
     "./napi": {
-      "import": "./index.js",
-      "types": "./index.d.ts"
+      "types": "./index.d.ts",
+      "import": "./index.js"
     },
     "./util/project-root": {
       "types": "./src/util/project-root.ts",
