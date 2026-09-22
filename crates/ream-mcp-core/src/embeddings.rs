@@ -176,12 +176,10 @@ pub fn decode_blob(bytes: &[u8]) -> Option<Vec<f32>> {
         return None;
     }
     let mut out = Vec::with_capacity(bytes.len() / 4);
-    for chunk in bytes.chunks_exact(4) {
-        let arr: [u8; 4] = match chunk.try_into() {
-            Ok(a) => a,
-            Err(_) => return None,
-        };
-        out.push(f32::from_le_bytes(arr));
+    // `.0` alone, and no `try_into`: the multiple-of-4 check above leaves no
+    // remainder, and `as_chunks` already hands back a `[u8; 4]`.
+    for chunk in bytes.as_chunks::<4>().0 {
+        out.push(f32::from_le_bytes(*chunk));
     }
     Some(out)
 }
