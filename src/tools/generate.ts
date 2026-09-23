@@ -65,6 +65,8 @@ interface DryRunResponse extends Wrapped {
 interface WriteResponse extends Wrapped {
 	createdFiles: string[];
 	modifiedFiles: string[];
+	/** Left alone because they already existed — pass `force` to replace them. */
+	skippedFiles: string[];
 	output: string;
 	truncated?: boolean;
 	fullOutputPath?: string;
@@ -278,7 +280,10 @@ function buildCliArgs(
 	dryRun: boolean,
 	force: boolean,
 ): string[] {
-	const flags: string[] = [];
+	// `--json` is what makes the last line of stdout the outcome object this
+	// tool parses. Without it the generators print for a human, which is the
+	// right default for them and unreadable here.
+	const flags: string[] = ["--json"];
 	if (dryRun) flags.push("--dry-run");
 	if (force) flags.push("--force");
 
@@ -405,6 +410,11 @@ function shapeWritten(
 	return {
 		createdFiles: payload.createdFiles.map((p) => p.replace(/\\/g, "/")),
 		modifiedFiles: payload.modifiedFiles.map((p) => p.replace(/\\/g, "/")),
+		// Reported rather than swallowed: a generator that skipped every file
+		// wrote nothing, and "created: []" alone does not say why.
+		skippedFiles: (payload.skippedFiles ?? []).map((p) =>
+			p.replace(/\\/g, "/"),
+		),
 		output: cappedOutput,
 		confidence: knownGaps.length === 0 ? "high" : "medium",
 		knownGaps,

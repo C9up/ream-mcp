@@ -13,10 +13,9 @@ export default defineConfig({
 			exclude: ["src/**/*.d.ts"],
 			reporter: ["text-summary", "json-summary"],
 			// Set from what CI reaches, not what a workspace checkout does:
-			// `generate-real-cli` needs the ream-cli sibling and `bmad.*` need a
-			// _bmad-output fixture, and both skip in a standalone repository —
-			// which is where this gate runs. Locally the same suite covers ~2
-			// points more.
+			// the `bmad.*` suites need a _bmad-output fixture and skip in a
+			// standalone repository — which is where this gate runs. Locally
+			// the same suite covers ~2 points more.
 			thresholds: {
 				lines: 76,
 				statements: 73,

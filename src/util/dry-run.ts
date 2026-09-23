@@ -30,6 +30,11 @@ export interface DryRunPayload {
 export interface WrittenPayload {
 	createdFiles: string[];
 	modifiedFiles: string[];
+	/**
+	 * Files that were already there. Optional: a generator that predates the
+	 * field simply reports none, and the tool reads that as "nothing skipped".
+	 */
+	skippedFiles?: string[];
 	warnings: string[];
 }
 
