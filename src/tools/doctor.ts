@@ -12,8 +12,16 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import {
+	accessSync,
+	constants,
+	existsSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, isAbsolute, join, relative } from "node:path";
 
 import { walkWorkspacePackages } from "../util/package-walker.js";
 
@@ -188,7 +196,12 @@ async function runHealth(root: string): Promise<unknown> {
 
 async function tryCargoVersion(knownGaps: string[]): Promise<string | null> {
 	try {
-		const out = await runCommand("cargo", ["--version"], CARGO_TIMEOUT_MS);
+		const cargo = resolveOnPath("cargo");
+		if (cargo === null) {
+			knownGaps.push("cargo not found on PATH; rust toolchain may be missing");
+			return null;
+		}
+		const out = await runCommand(cargo, ["--version"], CARGO_TIMEOUT_MS);
 		if (out === null) {
 			knownGaps.push(
 				"cargo --version did not return within 5s; rust toolchain may be missing",
@@ -326,9 +339,40 @@ async function runEnvCheck(root: string): Promise<unknown> {
 // ------------------------------------------------------------ shell
 
 /**
- * Spawn `cmd args`, return concatenated stdout (capped at 32 KB).
- * Returns `null` on timeout. Throws on spawn errors so the caller
- * can record a structured `knownGap`.
+ * Absolute path of `name` from the absolute entries of PATH, or null.
+ *
+ * Relative entries (`.`, ``) are skipped: they resolve against the cwd, i.e.
+ * the inspected project. On Windows only `.exe` is accepted, since `.cmd` /
+ * `.bat` need a shell, and cmd.exe searches the current directory first.
+ */
+function resolveOnPath(name: string): string | null {
+	const exts = process.platform === "win32" ? [".exe"] : [""];
+	for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+		if (dir.length === 0 || !isAbsolute(dir)) continue;
+		for (const ext of exts) {
+			const candidate = join(dir, `${name}${ext}`);
+			try {
+				if (!statSync(candidate).isFile()) continue;
+				if (process.platform !== "win32") accessSync(candidate, constants.X_OK);
+				return candidate;
+			} catch {
+				// not here, or not executable
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * Spawn `cmd args` (an absolute path), return concatenated stdout (capped at
+ * 32 KB). Returns `null` on timeout. Throws on spawn errors so the caller can
+ * record a structured `knownGap`.
+ *
+ * A read-only diagnostic must not run what the inspected project selects:
+ * rustup picks the toolchain from `rust-toolchain.toml` in the cwd and its
+ * parents (a `path =` there runs a repository binary) and may auto-install a
+ * `channel =` one. So the command runs from the home directory, without a
+ * shell, with `RUSTUP_TOOLCHAIN` dropped and auto-install off.
  */
 function runCommand(
 	cmd: string,
@@ -336,11 +380,13 @@ function runCommand(
 	timeoutMs: number,
 ): Promise<string | null> {
 	return new Promise((resolve, reject) => {
-		// `shell: true` on Windows lets PATH lookup pick up `.cmd`
-		// shims (e.g., `cargo.cmd`); on POSIX it adds nothing useful.
+		const env: NodeJS.ProcessEnv = { ...process.env, RUSTUP_AUTO_INSTALL: "0" };
+		delete env.RUSTUP_TOOLCHAIN;
 		const child = spawn(cmd, args, {
+			cwd: homedir(),
+			env,
 			stdio: ["ignore", "pipe", "ignore"],
-			shell: process.platform === "win32",
+			shell: false,
 		});
 		let buf = "";
 		let truncated = false;

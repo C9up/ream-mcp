@@ -13,7 +13,7 @@ export const DOCTOR_TOOLS: ToolDescriptor[] = [
 		name: "doctor.health",
 		annotations: READ_ONLY,
 		description:
-			"Report the development environment's health: Node version (from `process.version`), Rust version (via `cargo --version` shell-out), the list of NAPI binaries built across workspace packages, the list of expected-but-missing binaries with build hints, and a `workspaceClean` boolean reflecting manifest-version coherence.",
+			"Report the development environment's health: Node version (from `process.version`), Rust version (via `cargo --version`, resolved from absolute PATH entries and run from the home directory without a shell, so a project `rust-toolchain.toml` neither selects the binary nor triggers a toolchain install), the list of NAPI binaries built across workspace packages, the list of expected-but-missing binaries with build hints, and a `workspaceClean` boolean reflecting manifest-version coherence.",
 		inputSchema: {
 			type: "object",
 			properties: {},
