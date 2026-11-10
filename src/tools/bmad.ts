@@ -12,7 +12,7 @@
  * cold-boot path stays under 250 ms.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import {
 	type ParsedEpic,
@@ -21,6 +21,8 @@ import {
 	sliceSection,
 } from "../util/bmad-parser.js";
 import { resolveBmadRoot } from "../util/bmad-resolver.js";
+import { existsInside } from "../util/containment.js";
+import { walkProjectFiles } from "../util/fs-walk.js";
 import { walkWorkspacePackages } from "../util/package-walker.js";
 import {
 	atomicWrite,
@@ -159,7 +161,7 @@ function runListEpics(root: string): unknown {
 		);
 	}
 	const epicsPath = join(located.root, "planning-artifacts", "epics.md");
-	if (!existsSync(epicsPath)) {
+	if (!existsInside(epicsPath, located.root)) {
 		return shapeError(
 			`epics.md not found at ${forwardSlash(relative(root, epicsPath))}`,
 			"BMAD root resolved but planning-artifacts/epics.md is missing",
@@ -236,7 +238,7 @@ function runGetStory(root: string, args: Record<string, unknown>): unknown {
 
 	// 2. Fall back to the epic-section slice.
 	const epicsPath = join(located.root, "planning-artifacts", "epics.md");
-	if (!existsSync(epicsPath)) {
+	if (!existsInside(epicsPath, located.root)) {
 		return shapeError(
 			`story ${id} not found and epics.md missing`,
 			"create the artifact file or restore epics.md",
@@ -268,7 +270,7 @@ function runGetStory(root: string, args: Record<string, unknown>): unknown {
 
 function findArtifactFile(bmadRoot: string, id: string): string | null {
 	const dir = join(bmadRoot, "implementation-artifacts");
-	if (!existsSync(dir)) return null;
+	if (!existsInside(dir, bmadRoot)) return null;
 	const prefix = id.replace(".", "-");
 	let entries: import("node:fs").Dirent[];
 	try {
@@ -331,7 +333,7 @@ function runTrace(root: string, args: Record<string, unknown>): unknown {
 	const storyHits: Array<{ id: string; title: string; status: string }> = [];
 
 	const epicsPath = join(located.root, "planning-artifacts", "epics.md");
-	if (existsSync(epicsPath)) {
+	if (existsInside(epicsPath, located.root)) {
 		const text = readFileSync(epicsPath, "utf8");
 		const parsed = parseEpicsFile(text);
 		const sprintStatus = readSprintStatus(located.root);
@@ -401,7 +403,7 @@ function runGapReport(root: string): unknown {
 	const knownGaps: string[] = [];
 
 	const epics: ParsedEpic[] = [];
-	if (existsSync(epicsPath)) {
+	if (existsInside(epicsPath, located.root)) {
 		const text = readFileSync(epicsPath, "utf8");
 		const parsed = parseEpicsFile(text);
 		epics.push(...parsed.epics);
@@ -411,7 +413,7 @@ function runGapReport(root: string): unknown {
 
 	const requirementIds = collectRequirementIds(located.root);
 	const storyIds = epics.flatMap((e) => e.stories.map((s) => s.id));
-	const epicsBlob = existsSync(epicsPath)
+	const epicsBlob = existsInside(epicsPath, located.root)
 		? readFileSync(epicsPath, "utf8")
 		: "";
 
@@ -476,11 +478,11 @@ function collectRequirementIds(
 	const out: Array<{ id: string; sourceFile: string; line: number }> = [];
 	const seen = new Set<string>();
 	const planningDir = join(bmadRoot, "planning-artifacts");
-	if (!existsSync(planningDir)) return out;
+	if (!existsInside(planningDir, bmadRoot)) return out;
 	const candidates = ["prd.md", "architecture.md"];
 	for (const name of candidates) {
 		const full = join(planningDir, name);
-		if (!existsSync(full)) continue;
+		if (!existsInside(full, bmadRoot)) continue;
 		const text = safeRead(full);
 		if (text === null) continue;
 		const lines = text.split("\n");
@@ -515,7 +517,7 @@ function runNextStory(root: string, args: Record<string, unknown>): unknown {
 		);
 	}
 	const epicsPath = join(located.root, "planning-artifacts", "epics.md");
-	if (!existsSync(epicsPath)) {
+	if (!existsInside(epicsPath, located.root)) {
 		return shapeError(
 			"epics.md not found",
 			"BMAD root resolved but planning-artifacts/epics.md is missing",
@@ -601,6 +603,14 @@ function runUpdateStatus(root: string, args: Record<string, unknown>): unknown {
 			"BMAD root resolved but the sprint-status file is missing",
 		);
 	}
+	// The rename below replaces a link rather than writing through it, but the
+	// read would still follow it out of the project.
+	if (!existsInside(sprintPath, root)) {
+		return shapeError(
+			"sprint-status.yaml resolves outside the project",
+			"the file is a symlink to somewhere else; this tool only edits the project's own BMAD files",
+		);
+	}
 	const original = readFileSync(sprintPath, "utf8");
 	const found = findStatusLine(original, id, { requireIndent: true });
 	if (!found) {
@@ -669,7 +679,7 @@ function runUpdateStatus(root: string, args: Record<string, unknown>): unknown {
 function readSprintStatus(bmadRoot: string): Map<string, string> {
 	const map = new Map<string, string>();
 	const path = join(bmadRoot, "implementation-artifacts", "sprint-status.yaml");
-	if (!existsSync(path)) return map;
+	if (!existsInside(path, bmadRoot)) return map;
 	const text = safeRead(path);
 	if (text === null) return map;
 	const lines = text.split("\n");
@@ -717,66 +727,23 @@ function lookupEpicStatus(
 }
 
 function collectProjectFiles(root: string, knownGaps: string[]): string[] {
-	const out: string[] = [];
-	const seen = new Set<string>();
-	let capped = false;
-	const push = (p: string): void => {
-		if (capped) return;
-		if (seen.has(p)) return;
-		if (out.length >= FILE_CAP) {
-			capped = true;
-			knownGaps.push(`corpus search bounded to ${FILE_CAP} files`);
-			return;
-		}
-		seen.add(p);
-		out.push(p);
-	};
 	const packages = walkWorkspacePackages(root);
-	if (packages.length > 0) {
-		for (const pkg of packages) {
-			const dir = existsSync(join(pkg.dir, "src"))
-				? join(pkg.dir, "src")
-				: pkg.dir;
-			walkDir(dir, push);
-			if (capped) break;
-		}
-	} else {
-		const fallback = join(root, "src");
-		if (existsSync(fallback)) walkDir(fallback, push);
+	const startDirs =
+		packages.length > 0
+			? packages.map((pkg) =>
+					existsSync(join(pkg.dir, "src")) ? join(pkg.dir, "src") : pkg.dir,
+				)
+			: [join(root, "src")];
+	const walked = walkProjectFiles(startDirs, {
+		projectRoot: root,
+		skipDirs: SKIP_DIRS,
+		accept: (name) => SOURCE_FILE_RE.test(name),
+		maxFiles: FILE_CAP,
+	});
+	if (walked.capped) {
+		knownGaps.push(`corpus search bounded to ${FILE_CAP} files`);
 	}
-	return out;
-}
-
-function walkDir(dir: string, push: (p: string) => void): void {
-	let entries: import("node:fs").Dirent[];
-	try {
-		entries = readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return;
-	}
-	for (const entry of entries) {
-		if (entry.name.startsWith(".")) continue;
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (SKIP_DIRS.has(entry.name)) continue;
-			walkDir(full, push);
-			continue;
-		}
-		if (!entry.isFile()) {
-			try {
-				const s = statSync(full);
-				if (s.isDirectory() && !SKIP_DIRS.has(entry.name)) {
-					walkDir(full, push);
-					continue;
-				}
-				if (!s.isFile()) continue;
-			} catch {
-				continue;
-			}
-		}
-		if (!SOURCE_FILE_RE.test(entry.name)) continue;
-		push(full);
-	}
+	return walked.files;
 }
 
 function safeRead(path: string): string | null {

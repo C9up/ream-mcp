@@ -57,3 +57,8 @@ export function realpathInside(candidate: string, root: string): string | null {
 	if (realRoot === null || real === null) return null;
 	return isInside(real, realRoot) ? real : null;
 }
+
+/** `candidate` exists and its realpath is inside the realpath of `root`. */
+export function existsInside(candidate: string, root: string): boolean {
+	return realpathInside(candidate, root) !== null;
+}

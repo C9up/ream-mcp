@@ -12,13 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
-import {
-	existsSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	statSync,
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import { Project } from "ts-morph";
@@ -39,6 +33,7 @@ import {
 } from "../security/checks/reflect_metadata_missing.js";
 import { sqlInterpolation } from "../security/checks/sql_interpolation.js";
 import { xssHtmlRawOutput } from "../security/checks/xss_html_raw_output.js";
+import { walkProjectFiles } from "../util/fs-walk.js";
 import { walkWorkspacePackages } from "../util/package-walker.js";
 import {
 	SECURITY_CHECK_IDS,
@@ -227,8 +222,11 @@ function scanInkerTemplates(
 	knownGaps.push(
 		"template XSS scan is regex-based; an AST-based scanner would cover more",
 	);
-	const inkerFiles: string[] = [];
-	walkInkerFiles(templatesDir, inkerFiles);
+	const inkerFiles = walkProjectFiles([templatesDir], {
+		projectRoot: root,
+		accept: (name) => name.endsWith(".inker"),
+		maxFiles: FILE_CAP,
+	}).files;
 	const def = CHECK_BY_ID.get("xss_html_raw_output");
 	if (!def) return;
 	for (const file of inkerFiles) {
@@ -253,26 +251,6 @@ function scanInkerTemplates(
 					excerpt: elided,
 				}),
 			);
-		}
-	}
-}
-
-function walkInkerFiles(dir: string, out: string[]): void {
-	let entries: import("node:fs").Dirent[];
-	try {
-		entries = readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return;
-	}
-	for (const entry of entries) {
-		if (entry.name.startsWith(".")) continue;
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			walkInkerFiles(full, out);
-			continue;
-		}
-		if (entry.isFile() && entry.name.endsWith(".inker")) {
-			out.push(full);
 		}
 	}
 }
@@ -314,91 +292,28 @@ function parseChecks(
 }
 
 function collectFiles(root: string, knownGaps: string[]): string[] {
-	const collected: string[] = [];
-	const seen = new Set<string>();
-	let capped = false;
-
-	const pushFile = (abs: string): void => {
-		if (capped) return;
-		if (seen.has(abs)) return;
-		if (collected.length >= FILE_CAP) {
-			capped = true;
-			knownGaps.push(
-				`file walk capped at ${FILE_CAP} files; refine workspace layout to scan everything`,
-			);
-			return;
-		}
-		seen.add(abs);
-		collected.push(abs);
-	};
-
-	const visited = new Set<string>();
 	const packages = walkWorkspacePackages(root);
-	if (packages.length > 0) {
-		for (const pkg of packages) {
-			const srcDir = existsSync(join(pkg.dir, "src"))
-				? join(pkg.dir, "src")
-				: pkg.dir;
-			walkDir(srcDir, pushFile, visited);
-			if (capped) break;
-		}
-	} else {
-		const fallback = join(root, "src");
-		if (existsSync(fallback)) walkDir(fallback, pushFile, visited);
+	const startDirs =
+		packages.length > 0
+			? packages.map((pkg) =>
+					existsSync(join(pkg.dir, "src")) ? join(pkg.dir, "src") : pkg.dir,
+				)
+			: [join(root, "src")];
+	const walked = walkProjectFiles(startDirs, {
+		projectRoot: root,
+		skipDirs: SKIP_DIRS,
+		accept: (name) =>
+			TS_FILE_RE.test(name) &&
+			!name.endsWith(".d.ts") &&
+			!TEST_FILE_RE.test(name),
+		maxFiles: FILE_CAP,
+	});
+	if (walked.capped) {
+		knownGaps.push(
+			`file walk capped at ${FILE_CAP} files; refine workspace layout to scan everything`,
+		);
 	}
-
-	return collected;
-}
-
-function walkDir(
-	dir: string,
-	push: (abs: string) => void,
-	visited: Set<string>,
-): void {
-	// Track realpath to break symlink loops — pnpm-style symlinks
-	// or hand-rolled `a -> ../a` cycles otherwise infinite-recurse.
-	let real: string;
-	try {
-		real = realpathSync(dir);
-	} catch {
-		return;
-	}
-	if (visited.has(real)) return;
-	visited.add(real);
-
-	let entries: import("node:fs").Dirent[];
-	try {
-		entries = readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return;
-	}
-	for (const entry of entries) {
-		if (entry.name.startsWith(".")) continue;
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (SKIP_DIRS.has(entry.name)) continue;
-			walkDir(full, push, visited);
-			continue;
-		}
-		if (!entry.isFile()) {
-			// Symlink or other — best-effort statSync.
-			try {
-				const s = statSync(full);
-				if (s.isDirectory()) {
-					if (SKIP_DIRS.has(entry.name)) continue;
-					walkDir(full, push, visited);
-					continue;
-				}
-				if (!s.isFile()) continue;
-			} catch {
-				continue;
-			}
-		}
-		if (entry.name.endsWith(".d.ts")) continue;
-		if (!TS_FILE_RE.test(entry.name)) continue;
-		if (TEST_FILE_RE.test(entry.name)) continue;
-		push(full);
-	}
+	return walked.files;
 }
 
 function toRel(root: string, abs: string): string {

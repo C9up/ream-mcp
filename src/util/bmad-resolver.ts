@@ -10,15 +10,19 @@
  *   4. `<root>/ream-legacy/_bmad-output/`
  *   5. `<root>/.bmad/`
  *
- * The first tier whose path exists wins. The full candidate
- * trace is preserved so `bmad.locate` can debug resolution.
+ * The first tier whose path exists — and whose realpath stays inside the
+ * project — wins. `bmad.update_status` writes under the result, so a tier that
+ * is (or goes through) a symlink out of the project is never selected,
+ * whichever tier it is. The full candidate trace is preserved so `bmad.locate`
+ * can debug resolution.
  */
 
 import { existsSync } from "node:fs";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { Node, Project, SyntaxKind } from "ts-morph";
 
+import { existsInside } from "./containment.js";
 import { evaluateLiteral, extractEnvRef } from "./ts-static-parser.js";
 
 export type Tier = "reamrc" | "env" | "default" | "legacy" | "flat";
@@ -26,6 +30,7 @@ export type Tier = "reamrc" | "env" | "default" | "legacy" | "flat";
 export interface Candidate {
 	tier: Tier;
 	path: string;
+	/** Exists AND resolves inside the project; a link out of it reads as false. */
 	exists: boolean;
 }
 
@@ -46,16 +51,10 @@ export function resolveBmadRoot(root: string): ResolveResult | null {
 
 	const reamrcPath = readReamrcBmadRoot(root);
 	const reamrcResolved = reamrcPath !== null ? toAbs(root, reamrcPath) : null;
-	// Reject reamrc paths that escape `root` — reamrc.ts is part of the
-	// committed project config, so a `bmadRoot` pointing to `../../etc`
-	// is either a bug or an attempt to abuse `bmad.update_status`.
-	const reamrcContained =
-		reamrcResolved !== null && isContained(root, reamrcResolved);
 	candidates.push({
 		tier: "reamrc",
 		path: reamrcResolved ?? "",
-		exists:
-			reamrcContained && reamrcResolved !== null && existsSync(reamrcResolved),
+		exists: reamrcResolved !== null && existsInside(reamrcResolved, root),
 	});
 
 	const envValue = process.env.REAM_BMAD_ROOT;
@@ -66,7 +65,7 @@ export function resolveBmadRoot(root: string): ResolveResult | null {
 	candidates.push({
 		tier: "env",
 		path: envResolved ?? "",
-		exists: envResolved !== null && existsSync(envResolved),
+		exists: envResolved !== null && existsInside(envResolved, root),
 	});
 
 	for (const { tier, subdir } of TIERS) {
@@ -74,7 +73,7 @@ export function resolveBmadRoot(root: string): ResolveResult | null {
 		candidates.push({
 			tier,
 			path: forwardSlash(path),
-			exists: existsSync(path),
+			exists: existsInside(path, root),
 		});
 	}
 
@@ -162,12 +161,6 @@ function unwrapToObjectLiteral(
 function toAbs(root: string, p: string): string {
 	if (isAbsolute(p)) return p;
 	return join(root, p);
-}
-
-function isContained(root: string, candidate: string): boolean {
-	const normRoot = resolve(root);
-	const normCand = resolve(candidate);
-	return normCand === normRoot || normCand.startsWith(normRoot + sep);
 }
 
 function forwardSlash(p: string): string {

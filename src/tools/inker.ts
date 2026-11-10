@@ -16,11 +16,18 @@
  * misconfiguration rather than throwing.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import {
+	existsInside,
+	isInside,
+	realpathOfNearest,
+	safeRealpath,
+} from "../util/containment.js";
+import { walkProjectFiles } from "../util/fs-walk.js";
 import { INKER_TOOLS, isInkerTool } from "./inker.descriptors.js";
 
 export { INKER_TOOLS, isInkerTool };
@@ -80,32 +87,26 @@ function resolveTemplatesRoot(
 	// means a different root entirely (another drive on Windows).
 	const inside = relative(base, abs);
 	if (inside.startsWith("..") || isAbsolute(inside)) return null;
+	// The lexical check above is defeated by a symlink inside the project
+	// (`resources/templates -> /`), so an existing root must also stay inside
+	// once resolved.
+	if (existsSync(abs) && !existsInside(abs, base)) return null;
 	return abs;
 }
 
-function walkTemplates(root: string): string[] {
-	const out: string[] = [];
-	const stack: string[] = [root];
-	while (stack.length > 0) {
-		const dir = stack.pop();
-		if (dir === undefined) break;
-		let entries: ReadonlyArray<{ name: string; isDirectory: () => boolean }>;
-		try {
-			entries = readdirSync(dir, { withFileTypes: true });
-		} catch {
-			continue;
-		}
-		for (const entry of entries) {
-			const full = join(dir, entry.name);
-			if (entry.isDirectory()) {
-				stack.push(full);
-			} else if (entry.name.endsWith(".inker")) {
-				out.push(full);
-			}
-		}
-	}
-	out.sort();
-	return out;
+const TEMPLATE_CAP = 5000;
+
+function walkTemplates(
+	projectRoot: string,
+	templatesRoot: string,
+): { files: string[]; capped: boolean } {
+	const walked = walkProjectFiles([templatesRoot], {
+		projectRoot,
+		skipDotEntries: false,
+		accept: (name) => name.endsWith(".inker"),
+		maxFiles: TEMPLATE_CAP,
+	});
+	return { files: [...walked.files].sort(), capped: walked.capped };
 }
 
 export async function dispatchInker(
@@ -139,12 +140,16 @@ async function listTemplates(
 			"Give a path inside the project — this tool only reads its views.",
 		);
 	}
-	const rootError = validateTemplatesRoot(templatesRoot);
+	const rootError = validateTemplatesRoot(projectRoot, templatesRoot);
 	if (rootError) return rootError;
 
-	const files = walkTemplates(templatesRoot);
+	const walked = walkTemplates(projectRoot, templatesRoot);
+	const files = walked.files;
 	const templates: ListTemplatesResult["templates"] = [];
 	const knownGaps: string[] = [];
+	if (walked.capped) {
+		knownGaps.push(`template listing capped at ${TEMPLATE_CAP} files`);
+	}
 	// Loaded only when lint is requested, and only from the INSPECTED project:
 	// its inker is the one whose grammar its templates were written against.
 	let compile: ((source: string, name?: string) => void) | undefined;
@@ -254,16 +259,19 @@ async function loadProjectEngine(
 }
 
 /** Validate the templates root exists and is a directory, else a shaped error. */
-function validateTemplatesRoot(templatesRoot: string): ShapedError | null {
+function validateTemplatesRoot(
+	projectRoot: string,
+	templatesRoot: string,
+): ShapedError | null {
 	if (!existsSync(templatesRoot)) {
 		return shapeError(
-			`Templates root not found: ${templatesRoot}`,
+			`Templates root not found: ${displayPath(projectRoot, templatesRoot)}`,
 			"Pass `root: '<relative-path>'` to point at a non-default location, or create `resources/templates` to use the convention.",
 		);
 	}
 	if (!statSync(templatesRoot).isDirectory()) {
 		return shapeError(
-			`Templates root is not a directory: ${templatesRoot}`,
+			`Templates root is not a directory: ${displayPath(projectRoot, templatesRoot)}`,
 			"The `root` argument must resolve to a directory.",
 		);
 	}
@@ -302,6 +310,11 @@ function buildTemplateEntry(
 		}
 	}
 	return entry;
+}
+
+/** A project-relative, forward-slash path for messages: never the absolute one. */
+function displayPath(projectRoot: string, abs: string): string {
+	return relative(projectRoot, abs).replace(/\\/g, "/") || ".";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -369,8 +382,23 @@ async function renderTest(
 	}
 	if (!existsSync(templatesRoot)) {
 		return shapeError(
-			`Templates root not found: ${templatesRoot}`,
+			`Templates root not found: ${displayPath(projectRoot, templatesRoot)}`,
 			"Pass `root: '<relative-path>'` to point at a non-default location.",
+		);
+	}
+	// A template that is a link out of the project (or a name that climbs out
+	// of it) would be read by the engine like any other.
+	const templateFile = resolve(templatesRoot, `${templateName}.inker`);
+	const realTemplate = realpathOfNearest(templateFile);
+	const realProject = safeRealpath(projectRoot);
+	if (
+		realTemplate === null ||
+		realProject === null ||
+		!isInside(realTemplate, realProject)
+	) {
+		return shapeError(
+			"The template resolves outside the project.",
+			"Give a template inside the project — this tool only reads its views.",
 		);
 	}
 	// From the INSPECTED project, like the lint path: ream-mcp does not depend

@@ -10,13 +10,17 @@
  * walker treats it as a monorepo root and recurses past it
  * (otherwise a Ream app's root `package.json` would mask every
  * nested workspace member). Symlinks are followed but their
- * realpaths are tracked to break cycles.
+ * realpaths are tracked to break cycles, and a directory or entry file
+ * whose realpath leaves the project root is ignored: a cloned repository
+ * controls its symlinks, and `packages/x -> /` must not crawl the disk.
  *
  * Output is sorted by `name` for determinism.
  */
 
-import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
+
+import { isInside, safeRealpath } from "./containment.js";
 
 export interface WorkspacePackage {
 	name: string;
@@ -35,26 +39,29 @@ const SKIP_DIRS = new Set([
 	".turbo",
 ]);
 
+const MAX_DEPTH = 32;
+
 export function walkWorkspacePackages(root: string): WorkspacePackage[] {
 	const found: WorkspacePackage[] = [];
-	const visited = new Set<string>();
-	walk(root, found, visited);
+	const realRoot = safeRealpath(root);
+	if (realRoot === null) return found;
+	walk(root, 0, { out: found, visited: new Set<string>(), realRoot });
 	return found.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function walk(
-	dir: string,
-	out: WorkspacePackage[],
-	visited: Set<string>,
-): void {
-	let real: string;
-	try {
-		real = realpathSync(dir);
-	} catch {
-		return;
-	}
-	if (visited.has(real)) return;
-	visited.add(real);
+interface WalkState {
+	out: WorkspacePackage[];
+	visited: Set<string>;
+	realRoot: string;
+}
+
+function walk(dir: string, depth: number, state: WalkState): void {
+	if (depth > MAX_DEPTH) return;
+	const real = safeRealpath(dir);
+	if (real === null || !isInside(real, state.realRoot)) return;
+	if (state.visited.has(real)) return;
+	state.visited.add(real);
+	const out = state.out;
 
 	let entries: import("node:fs").Dirent[];
 	try {
@@ -67,7 +74,7 @@ function walk(
 		(entry) => entry.name === "package.json" && entry.isFile(),
 	);
 	if (hasPackageJson) {
-		const pkg = readPackage(dir);
+		const pkg = readPackage(dir, state.realRoot);
 		if (pkg) {
 			out.push(pkg.entry);
 			// A workspace-root package.json (declares `workspaces`)
@@ -85,7 +92,7 @@ function walk(
 		if (entry.name.startsWith(".")) continue;
 		const childPath = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			walk(childPath, out, visited);
+			walk(childPath, depth + 1, state);
 			continue;
 		}
 		if (entry.isSymbolicLink()) {
@@ -94,7 +101,7 @@ function walk(
 			// would be invisible without this branch.
 			try {
 				const stat = statSync(childPath);
-				if (stat.isDirectory()) walk(childPath, out, visited);
+				if (stat.isDirectory()) walk(childPath, depth + 1, state);
 			} catch {
 				// broken symlink — ignore
 			}
@@ -107,7 +114,7 @@ interface ReadResult {
 	isWorkspaceRoot: boolean;
 }
 
-function readPackage(dir: string): ReadResult | null {
+function readPackage(dir: string, realRoot: string): ReadResult | null {
 	const pkgJsonPath = join(dir, "package.json");
 	let raw: {
 		name?: unknown;
@@ -121,7 +128,7 @@ function readPackage(dir: string): ReadResult | null {
 		return null;
 	}
 	if (typeof raw.name !== "string" || raw.name.length === 0) return null;
-	const mainEntry = resolveMainEntry(dir, raw);
+	const mainEntry = resolveMainEntry(dir, raw, realRoot);
 	if (!mainEntry) return null;
 	const isWorkspaceRoot =
 		Array.isArray(raw.workspaces) ||
@@ -141,6 +148,7 @@ function readPackage(dir: string): ReadResult | null {
 function resolveMainEntry(
 	dir: string,
 	pkg: { main?: unknown; exports?: unknown },
+	realRoot: string,
 ): string | null {
 	const candidates: string[] = [];
 	pushIfSafe(candidates, dir, pkg.main);
@@ -172,10 +180,14 @@ function resolveMainEntry(
 
 	for (const c of candidates) {
 		try {
-			if (statSync(c).isFile()) return c;
+			if (!statSync(c).isFile()) continue;
 		} catch {
-			// continue
+			continue;
 		}
+		// `pushIfSafe` is lexical; an entry that is a link out of the
+		// project would hand its target to every tool reading the entry.
+		const real = safeRealpath(c);
+		if (real !== null && isInside(real, realRoot)) return c;
 	}
 	return null;
 }
