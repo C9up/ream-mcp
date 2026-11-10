@@ -4,7 +4,19 @@
  * other for trivial shape utilities.
  */
 
+/**
+ * A tool's JSON result. A top-level `error` field is how every dispatcher
+ * reports a refusal or failure (`{ error, hint }`), and the MCP spec wants
+ * those flagged `isError: true` so the client and model see the call failed.
+ */
 export function jsonContent(value: unknown) {
+	const failed =
+		typeof value === "object" &&
+		value !== null &&
+		!Array.isArray(value) &&
+		"error" in value &&
+		value.error !== undefined &&
+		value.error !== null;
 	return {
 		content: [
 			{
@@ -12,6 +24,7 @@ export function jsonContent(value: unknown) {
 				text: JSON.stringify(value, null, 2),
 			},
 		],
+		...(failed ? { isError: true } : {}),
 	};
 }
 

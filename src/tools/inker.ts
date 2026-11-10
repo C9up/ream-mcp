@@ -28,6 +28,7 @@ import {
 	safeRealpath,
 } from "../util/containment.js";
 import { walkProjectFiles } from "../util/fs-walk.js";
+import { redactPaths } from "../util/redact.js";
 import { INKER_TOOLS, isInkerTool } from "./inker.descriptors.js";
 
 export { INKER_TOOLS, isInkerTool };
@@ -345,18 +346,6 @@ function extractInkerError(err: unknown): {
 	return { code, message, line, column };
 }
 
-/**
- * Strip absolute filesystem paths from an error string so a rendered
- * template error doesn't leak the project's directory layout through
- * the MCP wire (and from there into LLM context / chat history).
- * Mirrors `cli-runner.sanitizeSpawnError`.
- */
-function sanitizePathsInMessage(detail: string): string {
-	const winRe = /[A-Za-z]:\\[^\s'"`]+/g;
-	const posixRe = /\/(?:[^\s/'"`]+\/)+[^\s/'"`]+/g;
-	return detail.replace(winRe, "<path>").replace(posixRe, "<path>");
-}
-
 async function renderTest(
 	projectRoot: string,
 	args: Record<string, unknown>,
@@ -457,7 +446,7 @@ async function renderTest(
 		return {
 			error: {
 				code: typeof e.code === "string" ? e.code : "E_INKER_UNKNOWN",
-				message: sanitizePathsInMessage(rawMessage),
+				message: redactPaths(rawMessage),
 				line: e.context?.line,
 				column: e.context?.column,
 			},

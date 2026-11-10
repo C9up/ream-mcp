@@ -27,6 +27,7 @@ import {
 	sep as pathSep,
 	resolve as resolvePath,
 } from "node:path";
+import { redactPaths } from "./redact.js";
 
 export const MAX_OUTPUT_BYTES = 32_768;
 export const OVERFLOW_HARD_CAP_BYTES = 1_048_576; // 1 MB
@@ -183,12 +184,7 @@ export function shellOutDisallowed(): boolean {
  * log) doesn't leak the user's directory layout.
  */
 export function sanitizeSpawnError(detail: string): string {
-	// Match `/abs/path` (POSIX) or `C:\abs\path` (Windows). Replace
-	// with `<path>`. We strip both forms even on POSIX so test-runs
-	// of cross-platform mocks don't leak.
-	const winRe = /[A-Za-z]:\\[^\s'"]+/g;
-	const posixRe = /\/(?:[^\s/'"]+\/)+[^\s'"]+/g;
-	return detail.replace(winRe, "<path>").replace(posixRe, "<path>");
+	return redactPaths(detail);
 }
 
 export async function runReamCli(

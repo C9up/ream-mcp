@@ -83,8 +83,10 @@ corrupt the JSON-RPC stream. All observability goes through
 `stderr`. Future tools added to this server must inherit this
 constraint.
 
-## MCP SDK pin
+## Errors
 
-Locked to `@modelcontextprotocol/sdk@^1.x`. v2.0 (alpha as of
-2026-04) changes error semantics (`-32602` on unknown tools
-instead of `isError: true`); we follow up post-Q1 2026.
+Following the MCP specification, an unknown tool name is a JSON-RPC error
+(`-32602`), while a tool that runs and fails — including every structured
+refusal (`{ error, hint }`) — returns a result with `isError: true`. A failure
+message carries no stack trace and no absolute path; the full detail goes to
+the server's stderr.

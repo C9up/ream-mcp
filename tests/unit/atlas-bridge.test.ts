@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+	buildAtlasBridge,
 	detectDialect,
 	resolveDatabaseUrl,
 	resolveMigrationsDir,
@@ -231,5 +232,24 @@ describe("splitMigrationName", () => {
 			id: "20240101_add_index_to_users",
 			name: "add_index_to_users",
 		});
+	});
+});
+
+describe("buildAtlasBridge error messages", () => {
+	it("does not echo a scheme-less URL (it may be all credentials)", async () => {
+		process.env.REAM_DATABASE_URL = "S3cr3tP4ss@db.internal/appdb";
+		const r = await buildAtlasBridge({ root: tmpRoot });
+		const text = JSON.stringify(r);
+		expect(text).not.toContain("S3cr3tP4ss");
+		expect(text).not.toContain("db.internal");
+	});
+
+	it("names only a well-formed scheme", async () => {
+		process.env.REAM_DATABASE_URL = "oracle://scott:tiger@db.internal/orcl";
+		const r = await buildAtlasBridge({ root: tmpRoot });
+		const text = JSON.stringify(r);
+		expect(text).toContain("oracle");
+		expect(text).not.toContain("tiger");
+		expect(text).not.toContain("db.internal");
 	});
 });

@@ -24,6 +24,7 @@ import {
 	SyntaxKind,
 } from "ts-morph";
 
+import { redactPaths, redactUrl } from "./redact.js";
 import { evaluateLiteral, extractEnvRef } from "./ts-static-parser.js";
 
 export type Dialect = "sqlite" | "postgres" | "mysql";
@@ -292,8 +293,14 @@ export async function buildAtlasBridge(
 	}
 	const dialect = detectDialect(url);
 	if (!dialect) {
+		// Only a well-formed scheme is named: whatever precedes the first `:`
+		// of a scheme-less value can be a password or a host.
+		const scheme = /^([A-Za-z][A-Za-z0-9+.-]{0,31}):\/\//.exec(url)?.[1];
 		return {
-			error: `unsupported database URL scheme: ${url.split(":")[0]}`,
+			error:
+				scheme === undefined
+					? "unrecognised database URL (no scheme)"
+					: `unsupported database URL scheme: ${scheme}`,
 			hint: "expected sqlite:, postgres:, or mysql: URL scheme",
 		};
 	}
@@ -330,7 +337,7 @@ export async function buildAtlasBridge(
 		const detail = err instanceof Error ? err.message : String(err);
 		return {
 			error: "failed to open database connection",
-			hint: detail,
+			hint: redactPaths(redactUrl(detail, url)),
 		};
 	}
 

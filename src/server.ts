@@ -18,7 +18,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
 	CallToolRequestSchema,
+	ErrorCode,
 	ListToolsRequestSchema,
+	McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { core } from "../index.js";
 import { uninstallEarlyHandlers } from "./signal-bootstrap.js";
@@ -50,6 +52,7 @@ import {
 } from "./tools/security.descriptors.js";
 import { isStationTool, STATION_TOOLS } from "./tools/station.descriptors.js";
 import { detectProjectRoot } from "./util/project-root.js";
+import { redactPaths } from "./util/redact.js";
 import { startStartupReindex } from "./util/startup-reindex.js";
 
 const PKG_NAME = "@c9up/ream-mcp";
@@ -133,21 +136,24 @@ interface CallToolHandlerArgs {
  * boot path. A SIGTERM during the first 500ms is caught by the
  * early handler and exits cleanly with code 0.
  */
+const ALL_TOOLS = [
+	...DOCS_TOOLS,
+	...INTROSPECT_TOOLS,
+	...GENERATE_TOOLS,
+	...QUALITY_TOOLS,
+	...MIGRATION_TOOLS,
+	...SECURITY_TOOLS,
+	...BMAD_TOOLS,
+	...DOCTOR_TOOLS,
+	...INKER_TOOLS,
+	...STATION_TOOLS,
+	...SCHEDULER_TOOLS,
+];
+const TOOL_NAMES = new Set(ALL_TOOLS.map((t) => t.name));
+
 export function registerAllTools(server: Server): void {
 	server.setRequestHandler(ListToolsRequestSchema, async () => ({
-		tools: [
-			...DOCS_TOOLS,
-			...INTROSPECT_TOOLS,
-			...GENERATE_TOOLS,
-			...QUALITY_TOOLS,
-			...MIGRATION_TOOLS,
-			...SECURITY_TOOLS,
-			...BMAD_TOOLS,
-			...DOCTOR_TOOLS,
-			...INKER_TOOLS,
-			...STATION_TOOLS,
-			...SCHEDULER_TOOLS,
-		],
+		tools: ALL_TOOLS,
 	}));
 
 	let handlersPromise: Promise<{
@@ -207,6 +213,11 @@ export function registerAllTools(server: Server): void {
 		CallToolRequestSchema,
 		async (req: CallToolHandlerArgs) => {
 			const { name, arguments: args = {} } = req.params;
+			// Not finding the tool is a protocol error (MCP spec, tools > Error
+			// Handling), answered before anything waits on the docs index.
+			if (!TOOL_NAMES.has(name)) {
+				throw new McpError(ErrorCode.InvalidParams, `Unknown tool: ${name}`);
+			}
 			let root: string;
 			try {
 				root = detectProjectRoot().path;
@@ -260,10 +271,13 @@ export function registerAllTools(server: Server): void {
 				}
 				return jsonContent(await dispatchDocs(root, name, args));
 			} catch (err) {
-				const detail =
+				// The stack stays on stderr; the client gets the message, with
+				// absolute paths scrubbed.
+				const stack =
 					err instanceof Error ? (err.stack ?? err.message) : String(err);
-				process.stderr.write(`[ream-mcp] tool '${name}' failed: ${detail}\n`);
-				return errorContent(`Tool '${name}' failed: ${detail}`);
+				process.stderr.write(`[ream-mcp] tool '${name}' failed: ${stack}\n`);
+				const message = err instanceof Error ? err.message : String(err);
+				return errorContent(`Tool '${name}' failed: ${redactPaths(message)}`);
 			}
 		},
 	);
