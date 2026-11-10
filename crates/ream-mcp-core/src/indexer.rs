@@ -24,7 +24,7 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::chunker::{chunk_markdown, Chunk, ChunkKind};
+use crate::chunker::{chunk_markdown_file, Chunk, ChunkKind};
 use crate::embeddings::{embed_batch, Embedding};
 use crate::store::{Store, StoreError};
 
@@ -99,7 +99,7 @@ pub fn index(store: &mut Store, cfg: &IndexConfig) -> Result<IndexStats, StoreEr
             }
         };
         let content_hash = format!("{:x}", sha256_short(&bytes));
-        let chunks: Vec<Chunk> = chunk_markdown(&bytes, kind.clone());
+        let chunks: Vec<Chunk> = chunk_markdown_file(&rel, &bytes, kind.clone());
         if chunks.is_empty() {
             stats.files_skipped += 1;
             continue;
@@ -245,6 +245,7 @@ fn is_skipped(p: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chunker::chunk_markdown;
     use std::fs;
     use tempfile::tempdir;
 
@@ -366,6 +367,46 @@ mod tests {
         };
         index(&mut store, &cfg).unwrap_or_else(|e| panic!("index: {e}"));
         assert!(tracked(&store).is_empty());
+    }
+
+    #[test]
+    fn identical_files_are_both_indexed() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let body = "# Untranslated\n\n## Setup\n\nRun the installer.\n";
+        for f in [
+            "docs/en/setup.md",
+            "docs/fr/setup.md",
+            "packages/a/README.md",
+            "packages/b/README.md",
+        ] {
+            let p = root.join(f);
+            fs::create_dir_all(p.parent().expect("parent")).expect("mkdir");
+            fs::write(&p, body).expect("write");
+        }
+        let mut store = Store::open_in_memory().unwrap_or_else(|e| panic!("open: {e}"));
+        let cfg = IndexConfig {
+            root: root.to_path_buf(),
+            full_rebuild: false,
+        };
+        let stats = index(&mut store, &cfg).unwrap_or_else(|e| panic!("index: {e}"));
+        assert_eq!(stats.files_indexed, 4);
+        assert_eq!(tracked(&store).len(), 4);
+        // Every file keeps its own chunks, addressable by id.
+        let hits = store
+            .bm25_candidates("installer", 10)
+            .unwrap_or_else(|e| panic!("bm25: {e}"));
+        let mut files: Vec<String> = hits.iter().map(|c| c.file.clone()).collect();
+        files.sort();
+        files.dedup();
+        assert_eq!(files.len(), 4);
+        for hit in &hits {
+            let got = store
+                .get_by_id(&hit.id)
+                .unwrap_or_else(|e| panic!("get: {e}"))
+                .unwrap_or_else(|| panic!("missing {}", hit.id));
+            assert_eq!(got.file, hit.file);
+        }
     }
 
     #[test]

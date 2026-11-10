@@ -109,11 +109,27 @@ pub fn chunk_id(file_hash_prefix: &str, heading_path: &[String]) -> String {
 }
 
 pub fn chunk_markdown(file_bytes: &[u8], kind: ChunkKind) -> Vec<Chunk> {
+    chunk_with_prefix(file_bytes, &file_hash(file_bytes), kind)
+}
+
+/// Chunk a corpus file. The id prefix hashes the file's project-relative path
+/// with its content: ids are primary keys in the store, so two files with
+/// byte-identical content (an untranslated page in two locales, two packages
+/// sharing a README) must not share them — a collision aborts the whole run.
+pub fn chunk_markdown_file(source: &str, file_bytes: &[u8], kind: ChunkKind) -> Vec<Chunk> {
+    let mut keyed = Vec::with_capacity(source.len() + 1 + file_bytes.len());
+    keyed.extend_from_slice(source.as_bytes());
+    keyed.push(0);
+    keyed.extend_from_slice(file_bytes);
+    chunk_with_prefix(file_bytes, &file_hash(&keyed), kind)
+}
+
+fn chunk_with_prefix(file_bytes: &[u8], prefix: &str, kind: ChunkKind) -> Vec<Chunk> {
     let text = match std::str::from_utf8(file_bytes) {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
-    let prefix = file_hash(file_bytes);
+    let prefix = prefix.to_string();
 
     let mut chunks: Vec<Chunk> = Vec::new();
     let mut heading_stack: Vec<(HeadingLevel, String)> = Vec::new();
