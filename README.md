@@ -13,7 +13,11 @@ The MCP stdio server (Rust core `ream-mcp-core` wired through NAPI) exposes a
 full toolset over `tools/list` — call it for the authoritative, up-to-date
 descriptors. The current categories:
 
-- **docs** — grounded documentation + hybrid search over the Ream docs
+- **docs** — grounded documentation + hybrid search over the project's
+  `README.md`, `docs/**/*.md`, `packages/<name>/README.md` and
+  `CORRECTIONS.md`, and `_bmad-output/planning-artifacts/**/*.md`; nothing
+  else is indexed, so files the app's users upload (`storage/`, `tmp/`, …)
+  never reach the agent as documentation
 - **introspect** — inspect routes, providers, decorated services
 - **generate** — scaffold controllers, entities, providers, modules, …
 - **migrations** — status / run / rollback helpers

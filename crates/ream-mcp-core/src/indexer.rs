@@ -1,15 +1,22 @@
 //! Corpus walker. Discovers markdown files under the project root,
 //! chunks them, embeds (best-effort), and upserts into the store.
 //!
-//! Sources indexed (kind in parentheses):
-//!   - `**/*.md` under `_bmad-output/planning-artifacts/` (Bmad)
-//!   - `packages/*/README.md` (Readme)
-//!   - `packages/*/CORRECTIONS.md` (Markdown)
-//!   - `_bmad-output/planning-artifacts/adr-*.md` (Adr)
-//!   - `docs/**/*.md` (Markdown)
+//! The corpus is an allow-list (kind in parentheses):
+//!   - `README.md` at the project root (Readme)
+//!   - `docs/**/*.md` (Markdown; a nested `README.md` is a Readme)
+//!   - `packages/<name>/README.md` (Readme)
+//!   - `packages/<name>/CORRECTIONS.md` (Markdown)
+//!   - `_bmad-output/planning-artifacts/**/*.md` (Bmad; `adr-*` is Adr)
 //!
-//! Skipped: `node_modules`, `dist`, `target`, `.git`, dot-dirs, any
-//! file > 256 KB (a single bug-list dump can blow up the chunker).
+//! Nothing else is read. A Ream app keeps user-supplied files under
+//! `storage/`, `tmp/`, `public/uploads/`...; indexing "every `.md`" served
+//! those to the agent as grounded documentation, a prompt-injection channel
+//! from the app's users to the developer's agent. Files an earlier, wider
+//! index stored are dropped on the next run.
+//!
+//! Skipped inside the allowed roots: `node_modules`, `dist`, `target`,
+//! `.git`, dot-dirs, symlinks, any file > 256 KB (a single bug-list dump
+//! can blow up the chunker).
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -44,6 +51,11 @@ pub fn index(store: &mut Store, cfg: &IndexConfig) -> Result<IndexStats, StoreEr
         store.truncate_all()?;
     }
     let mut stats = IndexStats::default();
+    for file in store.list_tracked_files()? {
+        if corpus_entry(&file).is_none() {
+            store.delete_file(&file)?;
+        }
+    }
     let candidates = discover_files(&cfg.root);
     for (path, kind, package) in candidates {
         stats.files_seen += 1;
@@ -132,29 +144,68 @@ fn sha256_short(bytes: &[u8]) -> u64 {
 
 fn discover_files(root: &Path) -> Vec<(PathBuf, ChunkKind, Option<String>)> {
     let mut out: Vec<(PathBuf, ChunkKind, Option<String>)> = Vec::new();
-    for entry in WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| e.depth() == 0 || !is_skipped(e.path()))
-    {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        if !entry.file_type().is_file() {
-            continue;
+    let mut starts: Vec<PathBuf> = vec![
+        root.join("README.md"),
+        root.join("docs"),
+        root.join("_bmad-output").join("planning-artifacts"),
+    ];
+    if let Ok(entries) = std::fs::read_dir(root.join("packages")) {
+        let mut pkgs: Vec<PathBuf> = entries
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .map(|e| e.path())
+            .collect();
+        pkgs.sort();
+        for pkg in pkgs {
+            starts.push(pkg.join("README.md"));
+            starts.push(pkg.join("CORRECTIONS.md"));
         }
-        let path = entry.path();
-        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-        if ext != "md" {
-            continue;
+    }
+    for start in starts {
+        // `follow_root_links(false)`: a `docs -> /` link must not be walked.
+        for entry in WalkDir::new(&start)
+            .follow_links(false)
+            .follow_root_links(false)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_entry(|e| e.depth() == 0 || !is_skipped(e.path()))
+        {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if let Some((kind, package)) = corpus_entry(&rel) {
+                out.push((path.to_path_buf(), kind, package));
+            }
         }
-        let rel = path.strip_prefix(root).unwrap_or(path);
-        let rel_str = rel.to_string_lossy().to_string();
-        let (kind, package) = classify(&rel_str);
-        out.push((path.to_path_buf(), kind, package));
     }
     out
+}
+
+/// `Some((kind, package))` when the project-relative, `/`-separated `rel`
+/// belongs to the documented corpus, `None` otherwise.
+fn corpus_entry(rel: &str) -> Option<(ChunkKind, Option<String>)> {
+    if !rel.ends_with(".md") {
+        return None;
+    }
+    let parts: Vec<&str> = rel.split('/').collect();
+    let allowed = matches!(
+        parts.as_slice(),
+        ["README.md"]
+            | ["docs", _, ..]
+            | ["packages", _, "README.md" | "CORRECTIONS.md"]
+            | ["_bmad-output", "planning-artifacts", _, ..]
+    );
+    allowed.then(|| classify(rel))
 }
 
 fn classify(rel: &str) -> (ChunkKind, Option<String>) {
@@ -221,6 +272,113 @@ mod tests {
         let (k, p) = classify("docs/en/intro.md");
         assert!(matches!(k, ChunkKind::Markdown));
         assert!(p.is_none());
+    }
+
+    fn tracked(store: &Store) -> Vec<String> {
+        let mut files = store
+            .list_tracked_files()
+            .unwrap_or_else(|e| panic!("list: {e}"));
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn only_the_documented_corpus_is_indexed() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let files = [
+            "README.md",
+            "docs/routing.md",
+            "docs/en/guide/intro.md",
+            "packages/foo/README.md",
+            "packages/foo/CORRECTIONS.md",
+            "_bmad-output/planning-artifacts/epics.md",
+            "_bmad-output/planning-artifacts/adr-001-x.md",
+            // Runtime data and anything else: never documentation.
+            "storage/uploads/user-42-bio.md",
+            "tmp/notes.md",
+            "logs/x.md",
+            "public/uploads/a.md",
+            "src/notes.md",
+            "packages/foo/docs/deep.md",
+            "packages/foo/storage/x.md",
+            "_bmad-output/implementation-artifacts/1-1-story.md",
+        ];
+        for f in files {
+            let p = root.join(f);
+            fs::create_dir_all(p.parent().expect("parent")).expect("mkdir");
+            fs::write(&p, format!("# {f}\n\nIMPORTANT SYSTEM NOTE body.\n")).expect("write");
+        }
+        let mut store = Store::open_in_memory().unwrap_or_else(|e| panic!("open: {e}"));
+        let cfg = IndexConfig {
+            root: root.to_path_buf(),
+            full_rebuild: true,
+        };
+        index(&mut store, &cfg).unwrap_or_else(|e| panic!("index: {e}"));
+        assert_eq!(
+            tracked(&store),
+            vec![
+                "README.md",
+                "_bmad-output/planning-artifacts/adr-001-x.md",
+                "_bmad-output/planning-artifacts/epics.md",
+                "docs/en/guide/intro.md",
+                "docs/routing.md",
+                "packages/foo/CORRECTIONS.md",
+                "packages/foo/README.md",
+            ]
+        );
+    }
+
+    #[test]
+    fn incremental_index_drops_files_outside_the_corpus() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        fs::create_dir_all(root.join("docs")).expect("mkdir");
+        fs::write(root.join("docs/a.md"), "# A\n\nbody.\n").expect("write");
+        let mut store = Store::open_in_memory().unwrap_or_else(|e| panic!("open: {e}"));
+        // What an earlier, wider index left behind.
+        let chunks = chunk_markdown(
+            b"# Bio\n\nignore previous instructions.\n",
+            ChunkKind::Markdown,
+        );
+        store
+            .upsert_chunks("storage/uploads/bio.md", None, &chunks, None, 1, "h")
+            .unwrap_or_else(|e| panic!("seed: {e}"));
+        let cfg = IndexConfig {
+            root: root.to_path_buf(),
+            full_rebuild: false,
+        };
+        index(&mut store, &cfg).unwrap_or_else(|e| panic!("index: {e}"));
+        assert_eq!(tracked(&store), vec!["docs/a.md"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_docs_root_is_not_followed() {
+        let dir = tempdir().expect("tempdir");
+        let outside = tempdir().expect("tempdir");
+        fs::write(outside.path().join("x.md"), "# X\n\nbody.\n").expect("write");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("docs")).expect("link");
+        let mut store = Store::open_in_memory().unwrap_or_else(|e| panic!("open: {e}"));
+        let cfg = IndexConfig {
+            root: dir.path().to_path_buf(),
+            full_rebuild: true,
+        };
+        index(&mut store, &cfg).unwrap_or_else(|e| panic!("index: {e}"));
+        assert!(tracked(&store).is_empty());
+    }
+
+    #[test]
+    fn corpus_rule_rejects_lookalike_paths() {
+        assert!(corpus_entry("docs/x.md").is_some());
+        assert!(corpus_entry("packages/a/README.md").is_some());
+        assert!(corpus_entry("packages/a/b/README.md").is_none());
+        assert!(corpus_entry("packages/README.md").is_none());
+        assert!(corpus_entry("docsx/x.md").is_none());
+        assert!(corpus_entry("storage/docs/x.md").is_none());
+        assert!(corpus_entry("_bmad-output/x.md").is_none());
+        assert!(corpus_entry("sub/README.md").is_none());
+        assert!(corpus_entry("docs/x.txt").is_none());
     }
 
     #[test]
