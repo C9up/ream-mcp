@@ -7,15 +7,12 @@
  * are dynamic-imported on first dispatch.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 export const DOCS_TOOLS: ToolDescriptor[] = [
 	{
 		name: "docs.search",
+		annotations: READ_ONLY,
 		description:
 			"Hybrid BM25 + cosine search over the indexed Ream docs corpus. Returns ranked chunks with source file/line refs and a confidence label.",
 		inputSchema: {
@@ -45,6 +42,7 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "docs.get",
+		annotations: READ_ONLY,
 		description:
 			"Retrieve a single chunk by stable id (default) or top-1 BM25 hit on heading-path (when `topic` is provided).",
 		inputSchema: {
@@ -61,6 +59,7 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "docs.explain",
+		annotations: READ_ONLY,
 		description:
 			"Symbol explanation. Tries ts-morph symbol lookup first (returns the declaration site + signature when matched); falls back to a BM25 search restricted to `Code` chunks otherwise.",
 		inputSchema: {
@@ -77,6 +76,7 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "docs.trace",
+		annotations: READ_ONLY,
 		description:
 			"Walk `@implements` annotations across packages/**/*.ts and return implementations, tests, and gaps for a requirement id (FR / MISS- / Story / Epic).",
 		inputSchema: {
@@ -93,6 +93,7 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "docs.audit_drift",
+		annotations: READ_ONLY,
 		description:
 			"Return tracked files whose source mtime is newer than the last indexed time (signaling stale documentation).",
 		inputSchema: {

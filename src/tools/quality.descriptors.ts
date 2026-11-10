@@ -8,15 +8,12 @@
  * 250 ms (cerebrum: heavy CJS imports race SIGTERM).
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 export const QUALITY_TOOLS: ToolDescriptor[] = [
 	{
 		name: "quality.duplicates",
+		annotations: READ_ONLY,
 		description:
 			'Token-stream rolling-hash duplicate detector across the project\'s TS sources. Identifier names are anonymized (function `foo` and `function bar` with identical bodies are duplicates); keywords, punctuation, and string/number literals are preserved (so `db.query("SELECT a")` and `db.query("SELECT b")` are NOT duplicates). Defaults are intentionally aggressive (minTokens=20, minLines=3) per Ream\'s no-duplication stance.',
 		inputSchema: {
@@ -41,6 +38,7 @@ export const QUALITY_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "quality.package_report",
+		annotations: READ_ONLY,
 		description:
 			"Per-package metrics: file count, LOC (excluding blank/comment-only lines), public-export count, lint-issue count (= ts-morph parse errors only — NOT biome/eslint), circular-dep participation count, optional testCoverage block from `coverage/coverage-summary.json`. When `package` is omitted, every workspace package is reported.",
 		inputSchema: {
@@ -57,6 +55,7 @@ export const QUALITY_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "quality.dep_graph",
+		annotations: READ_ONLY,
 		description:
 			"Internal dependency graph as JSON edges or Graphviz `dot`. External npm packages are NOT nodes — the graph is for INTERNAL coupling. Cycles are computed via Tarjan's SCC algorithm and always present (empty when acyclic).",
 		inputSchema: {

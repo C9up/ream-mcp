@@ -7,15 +7,12 @@
  * and uses a static ts-morph scan — no app boot, no NAPI load.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 export const SCHEDULER_TOOLS: ToolDescriptor[] = [
 	{
 		name: "scheduler.list_tasks",
+		annotations: READ_ONLY,
 		description:
 			"Static scan of cron task registrations across the project. Looks for `scheduler.register(name, cronExpr, …)` calls and `@Schedule(cronExpr)` decorators. Returns each task's name, cron expression, source file/line, and a confidence score that drops to `medium` when the name or expression isn't a string literal.",
 		inputSchema: {

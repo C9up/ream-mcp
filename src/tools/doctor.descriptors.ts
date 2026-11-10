@@ -6,15 +6,12 @@
  * via the 33.4 cli-runner) is dynamic-imported on first call.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 export const DOCTOR_TOOLS: ToolDescriptor[] = [
 	{
 		name: "doctor.health",
+		annotations: READ_ONLY,
 		description:
 			"Report the development environment's health: Node version (from `process.version`), Rust version (via `cargo --version` shell-out), the list of NAPI binaries built across workspace packages, the list of expected-but-missing binaries with build hints, and a `workspaceClean` boolean reflecting manifest-version coherence.",
 		inputSchema: {
@@ -25,6 +22,7 @@ export const DOCTOR_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "doctor.env_check",
+		annotations: READ_ONLY,
 		description:
 			"Validate the project's documented env vars and config files. Returns each env var with a `set: bool` flag (sensitive values are NEVER echoed) and each config file with an `exists: bool` flag plus an actionable hint.",
 		inputSchema: {

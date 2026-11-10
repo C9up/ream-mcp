@@ -22,7 +22,16 @@ function defined<T>(value: T | null | undefined): T {
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FIXTURE = join(HERE, "..", "fixtures", "migration-app");
+// The tmp dir doubles as the project root, so the sqlite file is inside the
+// project (a local target); the migrations come from the shared fixture.
+const MIGRATIONS = join(
+	HERE,
+	"..",
+	"fixtures",
+	"migration-app",
+	"database",
+	"migrations",
+);
 
 const SAVED_REAM_ENV = process.env.REAM_ENV;
 const SAVED_NODE_ENV = process.env.NODE_ENV;
@@ -32,6 +41,9 @@ let tmpDbDir: string;
 beforeEach(() => {
 	tmpDbDir = mkdtempSync(join(tmpdir(), "migration-run-"));
 	process.env.REAM_DATABASE_URL = `sqlite://${join(tmpDbDir, "test.db")}?mode=rwc`;
+	process.env.REAM_MIGRATIONS_DIR = MIGRATIONS;
+	process.env.REAM_MCP_ALLOW_MIGRATIONS = "1";
+	delete process.env.REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS;
 	// Pin a known non-production env so a developer running
 	// `REAM_ENV=production pnpm exec vitest` doesn't trip the
 	// production double-flag guard in non-prod-guard suites.
@@ -41,6 +53,8 @@ beforeEach(() => {
 
 afterEach(() => {
 	delete process.env.REAM_DATABASE_URL;
+	delete process.env.REAM_MIGRATIONS_DIR;
+	delete process.env.REAM_MCP_ALLOW_MIGRATIONS;
 	// win32: atlas's sqlite handle may still hold test.db open (unlink -> EBUSY);
 	// the assertions already ran, so cleanup is best-effort (OS reclaims tmpdir).
 	try {
@@ -75,7 +89,7 @@ interface ErrorShape {
 
 describe("migration > run", () => {
 	it("returns wouldRun with SQL for both pending migrations on dry-run", async () => {
-		const result = (await dispatchMigration(FIXTURE, "migration.run", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.run", {
 			dryRun: true,
 		})) as DryRunShape;
 		expect(result.wouldRun.length).toBe(2);
@@ -86,7 +100,7 @@ describe("migration > run", () => {
 	});
 
 	it("refuses dryRun:false without confirm:true", async () => {
-		const result = (await dispatchMigration(FIXTURE, "migration.run", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.run", {
 			dryRun: false,
 		})) as ErrorShape;
 		expect(result.error).toContain("confirm: true required");
@@ -94,7 +108,7 @@ describe("migration > run", () => {
 	});
 
 	it("actually applies migrations when dryRun:false + confirm:true", async () => {
-		const ran = (await dispatchMigration(FIXTURE, "migration.run", {
+		const ran = (await dispatchMigration(tmpDbDir, "migration.run", {
 			dryRun: false,
 			confirm: true,
 		})) as RunShape;
@@ -104,7 +118,7 @@ describe("migration > run", () => {
 			"create_posts",
 		]);
 		// Status now reflects the applied state.
-		const status = (await dispatchMigration(FIXTURE, "migration.status")) as {
+		const status = (await dispatchMigration(tmpDbDir, "migration.status")) as {
 			applied: Array<{ name: string }>;
 			pending: Array<{ name: string }>;
 			currentBatch: number;
@@ -118,7 +132,7 @@ describe("migration > run", () => {
 	});
 
 	it("rejects non-boolean dryRun with a structured error", async () => {
-		const result = (await dispatchMigration(FIXTURE, "migration.run", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.run", {
 			dryRun: "yes",
 		})) as ErrorShape;
 		expect(result.error).toContain("dryRun");

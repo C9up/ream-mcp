@@ -7,11 +7,7 @@
  * on first call so the cold-boot path stays under 250 ms.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { DESTRUCTIVE, READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 export const BMAD_STATUS_VALUES = [
 	"backlog",
@@ -26,6 +22,7 @@ export type BmadStatus = (typeof BMAD_STATUS_VALUES)[number];
 export const BMAD_TOOLS: ToolDescriptor[] = [
 	{
 		name: "bmad.locate",
+		annotations: READ_ONLY,
 		description:
 			"Resolve the project's BMAD root using a 5-tier priority: (1) `bmadRoot` field in `reamrc.ts`, (2) `REAM_BMAD_ROOT` env, (3) `<root>/_bmad-output/`, (4) `<root>/ream-legacy/_bmad-output/`, (5) `<root>/.bmad/`. First existing path wins. Returns the resolved path plus the full candidate trace so callers can debug resolution.",
 		inputSchema: {
@@ -36,6 +33,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "bmad.list_epics",
+		annotations: READ_ONLY,
 		description:
 			"Parse `epics.md` and return every epic with its nested stories. Heading match is lenient (emoji prefixes, trailing status badges, indented variants). Status is merged from `sprint-status.yaml` when present; otherwise stories default to `backlog`. Output is deterministic — sorted by epic id, then story id.",
 		inputSchema: {
@@ -46,6 +44,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "bmad.get_story",
+		annotations: READ_ONLY,
 		description:
 			"Return the full body of a story by id (e.g. `33.7`). Resolves to the implementation-artifact file when present (`<bmadRoot>/implementation-artifacts/33-7-*.md`), otherwise slices the corresponding section from `epics.md`.",
 		inputSchema: {
@@ -62,6 +61,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "bmad.trace",
+		annotations: READ_ONLY,
 		description:
 			"Trace a requirement id (e.g. `FR-12`, `NFR-3.5`) through the BMAD corpus and the project source tree: epics that mention it, stories that mention it, code files containing the literal id, and test files containing it. Plain-text grep, not AST.",
 		inputSchema: {
@@ -79,6 +79,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "bmad.gap_report",
+		annotations: READ_ONLY,
 		description:
 			"Return three lists of gaps surfaced by cross-referencing the BMAD corpus with the project source: requirements without stories, stories without code references, stories without test references. Detection is plain-text — a story id mentioned in JSDoc still counts as covered.",
 		inputSchema: {
@@ -89,6 +90,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "bmad.next_story",
+		annotations: READ_ONLY,
 		description:
 			"Return the first story whose status is not `done`, in epic-then-story-id order. Pass `epic` to scope the search to a single epic.",
 		inputSchema: {
@@ -104,6 +106,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "bmad.update_status",
+		annotations: DESTRUCTIVE,
 		description:
 			"Update a story's status in `sprint-status.yaml`. Dry-run by default: returns the line diff that would be applied without mutating the file. `dryRun: false` requires `confirm: true` (strict-consent rule from 33.4); writes the change atomically (sibling tempfile + rename in same dir). Status must be one of `backlog | ready-for-dev | in-progress | review | done`.",
 		inputSchema: {

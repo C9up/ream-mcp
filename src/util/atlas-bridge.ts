@@ -30,6 +30,8 @@ export type Dialect = "sqlite" | "postgres" | "mysql";
 
 export interface BridgeOptions {
 	root: string;
+	/** The URL the caller already resolved (and gated); resolved here when absent. */
+	url?: string;
 }
 
 export interface BridgeResult {
@@ -281,7 +283,7 @@ export function detectDialect(url: string): Dialect | null {
 export async function buildAtlasBridge(
 	opts: BridgeOptions,
 ): Promise<BridgeResult | BridgeError> {
-	const url = resolveDatabaseUrl(opts.root);
+	const url = opts.url ?? resolveDatabaseUrl(opts.root);
 	if (!url) {
 		return {
 			error: "no database URL configured",

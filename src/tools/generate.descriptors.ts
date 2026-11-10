@@ -14,11 +14,7 @@
  * which rejects an injection attempt.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { DESTRUCTIVE, type ToolDescriptor } from "./descriptor.js";
 
 const CLASS_NAME_PATTERN = "^[A-Z][A-Za-z0-9]*$";
 const MODULE_PATTERN = "^[a-z][a-z0-9-]*$";
@@ -72,24 +68,28 @@ function classScopedSchema(opts: {
 export const GENERATE_TOOLS: ToolDescriptor[] = [
 	{
 		name: "generate.module",
+		annotations: DESTRUCTIVE,
 		description:
 			"Scaffold a full resource: entity + controller + validator + migration under `app/<module>/`. Dry-run by default — returns plannedFiles[] for review.",
 		inputSchema: classScopedSchema({ moduleRequired: true }),
 	},
 	{
 		name: "generate.controller",
+		annotations: DESTRUCTIVE,
 		description:
 			"Scaffold a controller class at `app/<module>/<Name>Controller.ts` with CRUD method stubs.",
 		inputSchema: classScopedSchema({ moduleRequired: true }),
 	},
 	{
 		name: "generate.entity",
+		annotations: DESTRUCTIVE,
 		description:
 			"Scaffold an Atlas `@Entity` class at `app/<module>/<Name>.ts`.",
 		inputSchema: classScopedSchema({ moduleRequired: true }),
 	},
 	{
 		name: "generate.migration",
+		annotations: DESTRUCTIVE,
 		description:
 			"Scaffold a migration through Atlas's `make:migration`, into the directory `migrations.paths` names in config/database.ts (default `database/migrations`). Requires @c9up/atlas and its commands registered in reamrc.ts.",
 		inputSchema: {
@@ -109,6 +109,7 @@ export const GENERATE_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "generate.seeder",
+		annotations: DESTRUCTIVE,
 		description:
 			"Scaffold a seeder through Atlas's `make:seeder`, into the directory `seeders.paths` names in config/database.ts (default `database/seeders`). Requires @c9up/atlas and its commands registered in reamrc.ts.",
 		inputSchema: {
@@ -127,6 +128,7 @@ export const GENERATE_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "generate.validator",
+		annotations: DESTRUCTIVE,
 		description:
 			"Scaffold a Rune validator schema at `app/<module>/<Name>Validator.ts`.",
 		inputSchema: classScopedSchema({ moduleRequired: true }),

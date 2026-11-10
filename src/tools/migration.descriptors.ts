@@ -26,15 +26,31 @@
  *    NOT measured per-statement. Treat as approximate.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+
+import { DESTRUCTIVE, type ToolDescriptor } from "./descriptor.js";
+
+/**
+ * The first call against a fresh database creates the tracking table, so the
+ * status read is not read-only; it only ever adds that table.
+ */
+const MIGRATION_STATUS: ToolAnnotations = {
+	readOnlyHint: false,
+	destructiveHint: false,
+	idempotentHint: true,
+	openWorldHint: false,
+};
+
+const WRITE_GATE =
+	"`dryRun: false` also needs `confirm: true`, and is refused unless the user launched the server with `REAM_MCP_ALLOW_MIGRATIONS=1`. A target that is production — `REAM_ENV`/`NODE_ENV` is `production`, or the database URL is not provably local (a sqlite file inside the project, or a loopback / unix-socket server) — further needs `REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS=1` at launch. No tool argument can enable writes.";
+
+const PREVIEW_RUNS_CODE =
+	"The preview is not side-effect free: to compute the SQL it imports each migration module (running its top-level code) and calls its";
 
 export const MIGRATION_TOOLS: ToolDescriptor[] = [
 	{
 		name: "migration.status",
+		annotations: MIGRATION_STATUS,
 		description:
 			"Inspect Atlas migration state — returns `{ applied: [{ id, name, ranAt }], pending: [{ id, name, file }], currentBatch }` sorted by id ascending. On the very first call against a fresh database the `_migrations` tracking table is created (Atlas runner contract); subsequent calls are read-only.",
 		inputSchema: {
@@ -45,8 +61,8 @@ export const MIGRATION_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "migration.run",
-		description:
-			"Run pending Atlas migrations. Dry-run by default — `dryRun: true` (default) returns `{ wouldRun: [{ id, name, sql }] }` and does NOT execute migration SQL, but on the very first call against a fresh DB the Atlas runner still creates the `_migrations` tracking table. `dryRun: false` requires `confirm: true` (strict-consent rule from 33.4) and runs migrations inside Atlas's transactional batch contract — atomic bookkeeping. When `NODE_ENV`/`REAM_ENV` is `production`, BOTH `confirm: true` AND `allowProduction: true` are required.",
+		annotations: DESTRUCTIVE,
+		description: `Run pending Atlas migrations. Dry-run by default — \`dryRun: true\` (default) returns \`{ wouldRun: [{ id, name, sql }] }\` without applying the SQL. ${PREVIEW_RUNS_CODE} \`up()\` in this server process with the database connection bound, so a preview executes project code. ${WRITE_GATE} A real run applies migrations inside Atlas's transactional batch contract.`,
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -54,24 +70,13 @@ export const MIGRATION_TOOLS: ToolDescriptor[] = [
 					type: "boolean",
 					default: true,
 					description:
-						"When true (default), preview the SQL without applying. When false, requires `confirm: true` to run.",
+						"When true (default), preview the SQL without applying it (the migration modules still run). When false, requires `confirm: true` and a server launched with writes enabled.",
 				},
 				confirm: {
 					type: "boolean",
 					default: false,
 					description:
-						"Required when dryRun is false. Prevents accidental schema changes from a stray dry-run flip.",
-				},
-				env: {
-					type: "string",
-					description:
-						"Override env detection (lowest priority — REAM_ENV / NODE_ENV process env vars win first).",
-				},
-				allowProduction: {
-					type: "boolean",
-					default: false,
-					description:
-						"Second flag required when running against production. Single-flag misconfiguration is refused.",
+						"Required when dryRun is false. An accident guard, not an authorization.",
 				},
 			},
 			additionalProperties: false,
@@ -79,8 +84,8 @@ export const MIGRATION_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "migration.rollback",
-		description:
-			"Roll back the last `step` (default 1) Atlas migration BATCHES. Dry-run by default — returns the reverse SQL that would execute. `step` is a count of batches, not migrations: one batch may contain multiple migrations and rolls back as a unit. When `step` exceeds the number of applied batches, it's silently capped. Production guard same as `migration.run`.",
+		annotations: DESTRUCTIVE,
+		description: `Roll back the last \`step\` (default 1) Atlas migration BATCHES. Dry-run by default — returns the reverse SQL that would execute. ${PREVIEW_RUNS_CODE} \`down()\` in this server process, so a preview executes project code. \`step\` is a count of batches, not migrations: one batch may contain multiple migrations and rolls back as a unit. When \`step\` exceeds the number of applied batches, it's silently capped. ${WRITE_GATE}`,
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -95,22 +100,13 @@ export const MIGRATION_TOOLS: ToolDescriptor[] = [
 					type: "boolean",
 					default: true,
 					description:
-						"When true (default), preview the reverse SQL without applying. When false, requires `confirm: true`.",
+						"When true (default), preview the reverse SQL without applying it (the migration modules still run). When false, requires `confirm: true` and a server launched with writes enabled.",
 				},
 				confirm: {
 					type: "boolean",
 					default: false,
-					description: "Required when dryRun is false.",
-				},
-				env: {
-					type: "string",
-					description: "Override env detection (lowest priority).",
-				},
-				allowProduction: {
-					type: "boolean",
-					default: false,
 					description:
-						"Second flag required when rolling back against production.",
+						"Required when dryRun is false. An accident guard, not an authorization.",
 				},
 			},
 			additionalProperties: false,

@@ -1,28 +1,42 @@
 /**
- * `env-guard` unit tests — Story 33.6.
- *
- * Covers the env-detection priority + the consent gate
- * (dry-run bypass, missing-confirm refusal, production
- * single-flag refusal, production double-flag pass).
+ * `env-guard` unit tests: env detection, the confirm accident guard, the
+ * launch-time write gate and the local/production target classification.
  */
+
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { checkConsent, detectEnv } from "../../src/util/env-guard.js";
+import {
+	authorizeWrite,
+	checkConsent,
+	classifyTarget,
+	detectEnv,
+} from "../../src/util/env-guard.js";
 
-const SAVED_REAM_ENV = process.env.REAM_ENV;
-const SAVED_NODE_ENV = process.env.NODE_ENV;
+const VARS = [
+	"REAM_ENV",
+	"NODE_ENV",
+	"REAM_MCP_ALLOW_MIGRATIONS",
+	"REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS",
+] as const;
+const saved = new Map<string, string | undefined>();
 
 beforeEach(() => {
-	delete process.env.REAM_ENV;
-	delete process.env.NODE_ENV;
+	for (const v of VARS) {
+		saved.set(v, process.env[v]);
+		delete process.env[v];
+	}
 });
 
 afterEach(() => {
-	if (SAVED_REAM_ENV === undefined) delete process.env.REAM_ENV;
-	else process.env.REAM_ENV = SAVED_REAM_ENV;
-	if (SAVED_NODE_ENV === undefined) delete process.env.NODE_ENV;
-	else process.env.NODE_ENV = SAVED_NODE_ENV;
+	for (const v of VARS) {
+		const value = saved.get(v);
+		if (value === undefined) delete process.env[v];
+		else process.env[v] = value;
+	}
 });
 
 describe("detectEnv", () => {
@@ -37,10 +51,6 @@ describe("detectEnv", () => {
 		expect(detectEnv()).toBe("test");
 	});
 
-	it("uses the override when both env vars are unset", () => {
-		expect(detectEnv("staging")).toBe("staging");
-	});
-
 	it("returns 'development' when nothing is set", () => {
 		expect(detectEnv()).toBe("development");
 	});
@@ -52,81 +62,136 @@ describe("detectEnv", () => {
 	});
 
 	it("normalizes mixed-case env values to lowercase", () => {
-		// Guard against `NODE_ENV=Production` slipping past the
-		// production double-flag check in `checkConsent`.
 		process.env.NODE_ENV = "Production";
 		expect(detectEnv()).toBe("production");
-		delete process.env.NODE_ENV;
-		process.env.REAM_ENV = "PROD";
-		expect(detectEnv()).toBe("prod");
 	});
 });
 
 describe("checkConsent", () => {
-	it("passes through when dryRun is true (no DB mutation)", () => {
+	it("lets a preview through without confirm", () => {
+		expect(checkConsent({ dryRun: true, confirm: false })).toBeNull();
+	});
+
+	it("refuses a write without confirm", () => {
+		expect(checkConsent({ dryRun: false, confirm: false })?.error).toBe(
+			"confirm: true required",
+		);
+	});
+});
+
+const LOCAL = { local: true, description: "a local database server" };
+const REMOTE = {
+	local: false,
+	description: "a database host that is not loopback",
+};
+
+describe("authorizeWrite", () => {
+	it("refuses everything when writes were not enabled at launch", () => {
+		const r = authorizeWrite(LOCAL);
+		expect(r.ok).toBe(false);
+	});
+
+	it("only counts 1 / true as enabling", () => {
+		process.env.REAM_MCP_ALLOW_MIGRATIONS = "yes";
+		expect(authorizeWrite(LOCAL).ok).toBe(false);
+		process.env.REAM_MCP_ALLOW_MIGRATIONS = "TRUE";
+		expect(authorizeWrite(LOCAL)).toEqual({ ok: true, production: false });
+	});
+
+	it("treats a non-local target as production with NODE_ENV unset", () => {
+		process.env.REAM_MCP_ALLOW_MIGRATIONS = "1";
+		const refused = authorizeWrite(REMOTE);
+		expect(refused.ok).toBe(false);
+		process.env.REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS = "1";
+		expect(authorizeWrite(REMOTE)).toEqual({ ok: true, production: true });
+	});
+
+	it("treats REAM_ENV=production as production even for a local target", () => {
+		process.env.REAM_MCP_ALLOW_MIGRATIONS = "1";
+		process.env.REAM_ENV = "production";
+		expect(authorizeWrite(LOCAL).ok).toBe(false);
+		process.env.REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS = "1";
+		expect(authorizeWrite(LOCAL)).toEqual({ ok: true, production: true });
+	});
+
+	it("does not accept the production flag alone", () => {
+		process.env.REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS = "1";
+		expect(authorizeWrite(REMOTE).ok).toBe(false);
+	});
+});
+
+describe("classifyTarget", () => {
+	let base: string;
+	let project: string;
+
+	beforeEach(() => {
+		base = mkdtempSync(join(tmpdir(), "env-guard-"));
+		project = join(base, "project");
+		mkdirSync(project);
+	});
+
+	afterEach(() => {
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	it.each([
+		"postgres://u:p@localhost:5432/app",
+		"postgresql://u:p@127.0.0.1/app",
+		"postgres://u:p@127.8.9.10/app",
+		"mysql://u:p@[::1]:3306/app",
+		"postgres:///app",
+		"postgres://u@db.example.com/app?host=/var/run/postgresql",
+		"mysql://u:p@localhost/app?socket=/tmp/mysql.sock",
+	])("%s is local", (url) => {
+		expect(classifyTarget(url, project).local).toBe(true);
+	});
+
+	it.each([
+		"postgres://u:p@db.example.com/app",
+		"postgres://u:p@10.0.0.5/app",
+		"postgres://u@localhost/app?host=db.example.com",
+		"mysql://u:p@localhost.example.com/app",
+		"oracle://u:p@localhost/app",
+		"postgres://%%%",
+		"not a url",
+	])("%s is not local", (url) => {
+		expect(classifyTarget(url, project).local).toBe(false);
+	});
+
+	it("never echoes the URL in its description", () => {
+		const t = classifyTarget("postgres://app:S3cret@db.internal/app", project);
+		expect(t.description).not.toContain("S3cret");
+		expect(t.description).not.toContain("db.internal");
+	});
+
+	it("classifies sqlite files by where they really land", () => {
+		const outside = join(base, "outside");
+		mkdirSync(outside);
+		symlinkSync(outside, join(project, "data"), "dir");
+		expect(classifyTarget("sqlite::memory:", project).local).toBe(true);
 		expect(
-			checkConsent({
-				dryRun: true,
-				confirm: false,
-				allowProduction: false,
-			}),
-		).toBeNull();
-	});
-
-	it("refuses when dryRun is false and confirm is missing", () => {
-		const refusal = checkConsent({
-			dryRun: false,
-			confirm: false,
-			allowProduction: false,
-		});
-		expect(refusal).not.toBeNull();
-		expect(refusal?.error).toContain("confirm: true required");
-	});
-
-	it("refuses production with confirm: true but no allowProduction", () => {
-		process.env.NODE_ENV = "production";
-		const refusal = checkConsent({
-			dryRun: false,
-			confirm: true,
-			allowProduction: false,
-		});
-		expect(refusal).not.toBeNull();
-		expect(refusal?.error).toContain("production");
-		expect(refusal?.error).toContain("allowProduction");
-	});
-
-	it("passes production with both confirm AND allowProduction", () => {
-		process.env.NODE_ENV = "production";
+			classifyTarget("sqlite:file:x?mode=memory&cache=shared", project).local,
+		).toBe(true);
 		expect(
-			checkConsent({
-				dryRun: false,
-				confirm: true,
-				allowProduction: true,
-			}),
-		).toBeNull();
-	});
-
-	it("respects the env override on the consent path", () => {
-		process.env.NODE_ENV = "development";
-		const refusal = checkConsent({
-			dryRun: false,
-			confirm: true,
-			allowProduction: false,
-			env: "production",
-		});
-		// `env` is the LOWEST priority — REAM_ENV/NODE_ENV win — so
-		// when NODE_ENV is "development" the override is ignored.
-		expect(refusal).toBeNull();
-	});
-
-	it("uses env override when no env vars are set", () => {
-		const refusal = checkConsent({
-			dryRun: false,
-			confirm: true,
-			allowProduction: false,
-			env: "production",
-		});
-		expect(refusal).not.toBeNull();
-		expect(refusal?.error).toContain("production");
+			classifyTarget(`sqlite://${join(project, "tmp", "db.sqlite")}`, project)
+				.local,
+		).toBe(true);
+		expect(
+			classifyTarget("sqlite://tmp/db.sqlite?mode=rwc", project, project).local,
+		).toBe(true);
+		expect(
+			classifyTarget("sqlite://../outside/db.sqlite", project, project).local,
+		).toBe(false);
+		expect(
+			classifyTarget(`sqlite://${join(outside, "db.sqlite")}`, project).local,
+		).toBe(false);
+		expect(
+			classifyTarget(`sqlite://${join(project, "data", "db.sqlite")}`, project)
+				.local,
+		).toBe(false);
+		expect(
+			classifyTarget("sqlite://%2e%2e/outside/db.sqlite", project, project)
+				.local,
+		).toBe(false);
 	});
 });

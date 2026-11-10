@@ -22,7 +22,16 @@ function defined<T>(value: T | null | undefined): T {
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FIXTURE = join(HERE, "..", "fixtures", "migration-app");
+// The tmp dir doubles as the project root, so the sqlite file is inside the
+// project (a local target); the migrations come from the shared fixture.
+const MIGRATIONS = join(
+	HERE,
+	"..",
+	"fixtures",
+	"migration-app",
+	"database",
+	"migrations",
+);
 
 const SAVED_REAM_ENV = process.env.REAM_ENV;
 const SAVED_NODE_ENV = process.env.NODE_ENV;
@@ -32,12 +41,17 @@ let tmpDbDir: string;
 beforeEach(() => {
 	tmpDbDir = mkdtempSync(join(tmpdir(), "migration-rollback-"));
 	process.env.REAM_DATABASE_URL = `sqlite://${join(tmpDbDir, "test.db")}?mode=rwc`;
+	process.env.REAM_MIGRATIONS_DIR = MIGRATIONS;
+	process.env.REAM_MCP_ALLOW_MIGRATIONS = "1";
+	delete process.env.REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS;
 	delete process.env.REAM_ENV;
 	delete process.env.NODE_ENV;
 });
 
 afterEach(() => {
 	delete process.env.REAM_DATABASE_URL;
+	delete process.env.REAM_MIGRATIONS_DIR;
+	delete process.env.REAM_MCP_ALLOW_MIGRATIONS;
 	// win32: atlas's sqlite handle may still hold test.db open (unlink -> EBUSY);
 	// the assertions already ran, so cleanup is best-effort (OS reclaims tmpdir).
 	try {
@@ -67,7 +81,7 @@ interface RolledBackShape {
 }
 
 async function applyMigrations(): Promise<void> {
-	await dispatchMigration(FIXTURE, "migration.run", {
+	await dispatchMigration(tmpDbDir, "migration.run", {
 		dryRun: false,
 		confirm: true,
 	});
@@ -76,7 +90,7 @@ async function applyMigrations(): Promise<void> {
 describe("migration > rollback", () => {
 	it("returns wouldRollback with reverse SQL for the last batch (dry-run)", async () => {
 		await applyMigrations();
-		const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
 			dryRun: true,
 		})) as DryRollbackShape;
 		expect(result.wouldRollback.length).toBe(2);
@@ -92,7 +106,7 @@ describe("migration > rollback", () => {
 		process.env.REAM_MIGRATIONS_TABLE = "custom_migrations";
 		try {
 			await applyMigrations(); // atlas tracks into custom_migrations
-			const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
+			const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
 				dryRun: true,
 			})) as DryRollbackShape;
 			// Pre-fix the dry-run read hardcoded `_migrations` (empty) → 0 rows.
@@ -104,7 +118,7 @@ describe("migration > rollback", () => {
 
 	it("refuses dryRun:false without confirm:true", async () => {
 		await applyMigrations();
-		const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
 			dryRun: false,
 		})) as { error: string; confidence: string };
 		expect(result.error).toContain("confirm: true required");
@@ -113,13 +127,13 @@ describe("migration > rollback", () => {
 
 	it("actually rolls back when dryRun:false + confirm:true", async () => {
 		await applyMigrations();
-		const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
 			dryRun: false,
 			confirm: true,
 		})) as RolledBackShape;
 		expect(result.rolledBack.length).toBe(2);
 		// Status now shows everything pending again.
-		const status = (await dispatchMigration(FIXTURE, "migration.status")) as {
+		const status = (await dispatchMigration(tmpDbDir, "migration.status")) as {
 			applied: unknown[];
 			pending: unknown[];
 		};
@@ -129,7 +143,7 @@ describe("migration > rollback", () => {
 
 	it("silently caps `step` when it exceeds applied batches", async () => {
 		await applyMigrations();
-		const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
 			dryRun: true,
 			step: 99,
 		})) as DryRollbackShape;
@@ -138,7 +152,7 @@ describe("migration > rollback", () => {
 	});
 
 	it("rejects non-positive integer step", async () => {
-		const result = (await dispatchMigration(FIXTURE, "migration.rollback", {
+		const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
 			step: 0,
 		})) as { error: string; confidence: string };
 		expect(result.error).toContain("invalid step");

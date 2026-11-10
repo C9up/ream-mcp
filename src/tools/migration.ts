@@ -5,12 +5,12 @@
  * highest-stakes write surface in the MCP server: schema
  * migrations. Three guardrails:
  *
- *   1. Dry-run by default (preview SQL, never mutate).
- *   2. Strict consent (33.4 G6) — `dryRun: false` requires
- *      `confirm: true`.
- *   3. Production double-flag — when REAM_ENV/NODE_ENV is
- *      `production`, BOTH `confirm: true` AND
- *      `allowProduction: true` are required.
+ *   1. Dry-run by default (preview SQL, no write; the preview still
+ *      imports and runs the migration modules — see the descriptors).
+ *   2. `dryRun: false` requires `confirm: true` — an accident guard.
+ *   3. The write gate in `util/env-guard.ts`: writes are enabled by
+ *      launch-time flags only, never by a tool argument, and a
+ *      target that is not provably local counts as production.
  *
  * Per-dispatch adapter lifecycle: every call builds a fresh
  * connection and `close()`s it in `finally`. No pool reuse.
@@ -37,9 +37,14 @@ import {
 	buildAtlasBridge,
 	type Dialect,
 	isBridgeError,
+	resolveDatabaseUrl,
 	splitMigrationName,
 } from "../util/atlas-bridge.js";
-import { checkConsent } from "../util/env-guard.js";
+import {
+	authorizeWrite,
+	checkConsent,
+	classifyTarget,
+} from "../util/env-guard.js";
 
 export {
 	isMigrationTool,
@@ -51,8 +56,6 @@ type Confidence = "high" | "medium" | "low";
 interface ConsentInputs {
 	dryRun: boolean;
 	confirm: boolean;
-	env?: string;
-	allowProduction: boolean;
 }
 
 export async function dispatchMigration(
@@ -215,12 +218,10 @@ async function runMigrate(
 	const inputs = parseConsentInputs(args, true);
 	if ("error" in inputs) return shapeError(inputs.error, inputs.hint);
 
-	if (!inputs.dryRun) {
-		const refusal = checkConsent(inputs);
-		if (refusal) return shapeError(refusal.error, refusal.hint);
-	}
+	const gate = gateWrite(root, inputs);
+	if ("error" in gate) return shapeError(gate.error, gate.hint);
 
-	const bridge = await buildAtlasBridge({ root });
+	const bridge = await buildAtlasBridge({ root, url: gate.url });
 	if (isBridgeError(bridge)) return shapeError(bridge.error, bridge.hint);
 	if (!bridge.migrationsDirExists) {
 		const relDir = toForwardSlash(relative(root, bridge.migrationsDir));
@@ -292,12 +293,10 @@ async function runRollback(
 	const inputs = parseConsentInputs(args, true);
 	if ("error" in inputs) return shapeError(inputs.error, inputs.hint);
 
-	if (!inputs.dryRun) {
-		const refusal = checkConsent(inputs);
-		if (refusal) return shapeError(refusal.error, refusal.hint);
-	}
+	const gate = gateWrite(root, inputs);
+	if ("error" in gate) return shapeError(gate.error, gate.hint);
 
-	const bridge = await buildAtlasBridge({ root });
+	const bridge = await buildAtlasBridge({ root, url: gate.url });
 	if (isBridgeError(bridge)) return shapeError(bridge.error, bridge.hint);
 	if (!bridge.migrationsDirExists) {
 		const relDir = toForwardSlash(relative(root, bridge.migrationsDir));
@@ -328,7 +327,10 @@ async function runRollback(
 			const adapter = bridge.connection as DatabaseAdapter;
 			const before = await currentBatch(adapter, bridge.migrationsTable);
 			if (before === 0) break;
-			const names = await runner.rollback();
+			// The gate already refused production unless the user allowed it
+			// at launch; atlas's own production guard reads only NODE_ENV, so
+			// it is forced exactly when that launch-time allowance applies.
+			const names = await runner.rollback({ force: gate.production });
 			for (const n of names) {
 				const split = splitMigrationName(n);
 				rolledBack.push({ id: split.id, name: split.name, batch: before });
@@ -441,20 +443,16 @@ function parseConsentInputs(
 	if (typeof confirm !== "boolean") {
 		return { error: "invalid confirm", hint: "confirm must be a boolean" };
 	}
-	const allowProduction =
-		args.allowProduction === undefined ? false : args.allowProduction;
-	if (typeof allowProduction !== "boolean") {
-		return {
-			error: "invalid allowProduction",
-			hint: "allowProduction must be a boolean",
-		};
-	}
-	let env: string | undefined;
-	if (args.env !== undefined) {
-		if (typeof args.env !== "string") {
-			return { error: "invalid env", hint: "env must be a string" };
+	// These used to open the production gate. A tool argument is written by
+	// the model the gate restrains, so they are refused rather than ignored:
+	// silently dropping them would let a caller believe it had consented.
+	for (const key of ["env", "allowProduction"]) {
+		if (args[key] !== undefined) {
+			return {
+				error: `\`${key}\` is not a tool argument`,
+				hint: "Migration writes, and production writes, are enabled by the user when launching ream-mcp (REAM_MCP_ALLOW_MIGRATIONS=1, REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS=1); the environment comes from REAM_ENV / NODE_ENV and the database URL.",
+			};
 		}
-		env = args.env;
 	}
 	if (dryRun && confirm) {
 		// `confirm: true` is meaningless during a dry-run — the
@@ -466,7 +464,32 @@ function parseConsentInputs(
 			hint: "set dryRun: false when passing confirm: true; preview-only calls do not need confirm",
 		};
 	}
-	return { dryRun, confirm, allowProduction, env };
+	return { dryRun, confirm };
+}
+
+interface GatePassed {
+	/** Resolved database URL, handed to the bridge so the gated URL is the one used. */
+	url: string | undefined;
+	production: boolean;
+}
+
+/**
+ * Previews pass straight through. A write needs `confirm: true`, then the
+ * launch-time allowance for the target the URL actually points at.
+ */
+function gateWrite(
+	root: string,
+	inputs: ConsentInputs,
+): GatePassed | ConsentInputsError {
+	const url = resolveDatabaseUrl(root) ?? undefined;
+	if (inputs.dryRun) return { url, production: false };
+	const refusal = checkConsent(inputs);
+	if (refusal) return refusal;
+	// No URL: let the bridge report it; nothing can be written without one.
+	if (url === undefined) return { url, production: false };
+	const auth = authorizeWrite(classifyTarget(url, root));
+	if (!auth.ok) return { error: auth.error, hint: auth.hint };
+	return { url, production: auth.production };
 }
 
 async function safeClose(bridge: BridgeResult): Promise<void> {

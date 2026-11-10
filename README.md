@@ -26,10 +26,14 @@ descriptors. The current categories:
 
 ## Usage
 
+Add the server to the project, then register it in the project's `.mcp.json`:
+
 ```bash
-pnpm --filter @c9up/ream-mcp build   # builds Rust + TypeScript
-npx @c9up/ream-mcp                   # launches the stdio server
+ream add -D @c9up/ream-mcp
+ream mcp install                     # writes `npx --no @c9up/ream-mcp`
 ```
+
+`--no` runs the version the project's lockfile pins and never downloads one.
 
 The server auto-detects the Ream project root by walking up from
 `cwd` and checking for, in order:
@@ -39,6 +43,22 @@ The server auto-detects the Ream project root by walking up from
 3. `package.json` containing `@c9up/ream` in deps
 
 Set `REAM_PROJECT_ROOT=/path/to/project` to override.
+
+## Migration writes are off by default
+
+`migration.run` and `migration.rollback` preview by default. A real run
+(`dryRun: false, confirm: true`) is refused unless the user enables it when
+launching the server — no tool argument can, since the model calling the tool
+writes every argument:
+
+| Launch env | Allows |
+|---|---|
+| `REAM_MCP_ALLOW_MIGRATIONS=1` | writes to a local database: a sqlite file inside the project, or a loopback / unix-socket server |
+| `REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS=1` (with the above) | writes to production: `REAM_ENV`/`NODE_ENV` is `production`, or the database URL is anything not provably local |
+
+Set them in the `env` block of the server's `.mcp.json` entry. A preview is not
+side-effect free either: it imports each migration module and runs its `up()` /
+`down()` in the server process to collect the SQL, so it executes project code.
 
 ## Architecture
 

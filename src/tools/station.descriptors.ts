@@ -8,15 +8,12 @@
  * `defineResource(...)` scan — no app boot needed.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 export const STATION_TOOLS: ToolDescriptor[] = [
 	{
 		name: "station.list_resources",
+		annotations: READ_ONLY,
 		description:
 			"Static scan of `defineResource(...)` calls in the project. Returns each resource's name, entity reference, declared actions, and source file/line — useful to verify which CRUD surface Station exposes without booting the app. Confidence drops to `medium` when arguments aren't string literals (computed names / dynamic entity refs).",
 		inputSchema: {

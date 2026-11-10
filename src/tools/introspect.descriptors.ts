@@ -6,15 +6,12 @@
  * handlers in `introspect.ts` are dynamic-imported on first dispatch.
  */
 
-interface ToolDescriptor {
-	name: string;
-	description: string;
-	inputSchema: Record<string, unknown>;
-}
+import { READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 export const INTROSPECT_TOOLS: ToolDescriptor[] = [
 	{
 		name: "list.routes",
+		annotations: READ_ONLY,
 		description:
 			"Every HTTP route registered via the project's Router. Groups (prefix/middleware/guards) are flattened. Returns sorted by (method, path).",
 		inputSchema: {
@@ -25,6 +22,7 @@ export const INTROSPECT_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "list.entities",
+		annotations: READ_ONLY,
 		description:
 			"Every `@Entity`-decorated class with columns, relations, and lifecycle hooks (Atlas).",
 		inputSchema: {
@@ -35,6 +33,7 @@ export const INTROSPECT_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "list.events",
+		annotations: READ_ONLY,
 		description:
 			"Every event binding: `bus.subscribe`/`@EventListener` subscribers and `bus.emit`/`bus.dispatch` emitters, grouped by event name (event bus).",
 		inputSchema: {
@@ -45,6 +44,7 @@ export const INTROSPECT_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "list.providers",
+		annotations: READ_ONLY,
 		description:
 			"Every `*Provider` class with lifecycle hooks (register/boot/shutdown) and container bindings.",
 		inputSchema: {
@@ -55,6 +55,7 @@ export const INTROSPECT_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "list.middleware",
+		annotations: READ_ONLY,
 		description:
 			"HTTP middleware in pipeline order, extracted from the project's HttpKernel global + named maps.",
 		inputSchema: {
@@ -65,6 +66,7 @@ export const INTROSPECT_TOOLS: ToolDescriptor[] = [
 	},
 	{
 		name: "get.config",
+		annotations: READ_ONLY,
 		description:
 			"Static parse of `config/*.ts`. Optional `key` (e.g. `app.name`) descends the tree. Env vars surface as `{ env, default }`; non-literals as `{ unevaluated, expression }`.",
 		inputSchema: {
