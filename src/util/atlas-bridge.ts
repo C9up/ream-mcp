@@ -222,7 +222,7 @@ const DEFAULT_MIGRATIONS_TABLE = "ream_migrations";
  *   4. `"ream_migrations"` — atlas's own default
  *
  * No identifier validation here — `MigrationRunner` validates synchronously
- * at construction and throws `AtlasError("E_MIGRATION_INVALID_TABLE_NAME")`.
+ * at construction and throws `E_ATLAS_MIGRATION_INVALID_TABLE_NAME`.
  */
 export function resolveMigrationsTable(root: string): string {
 	const override = process.env.REAM_MIGRATIONS_TABLE;
