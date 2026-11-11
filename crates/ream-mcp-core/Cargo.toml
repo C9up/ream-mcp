@@ -11,7 +11,7 @@ crate-type = ["lib"]
 
 [dependencies]
 # SQLite via bundled sqlite3 + FTS5; `blob` feature for raw embedding storage.
-rusqlite = { version = "0.40", features = ["bundled", "blob"] }
+rusqlite = { version = "0.42", features = ["bundled", "blob"] }
 # Vector accelerator. ALPHA (0.1.10-alpha.3) — the BM25-only fallback is the
 # load-bearing path. Statically linked via `cc`, no runtime .so/.dll needed.
 sqlite-vec = "0.1"
