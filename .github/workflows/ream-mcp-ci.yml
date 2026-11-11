@@ -229,15 +229,23 @@ jobs:
           if-no-files-found: error
 
   cargo-tests:
-    name: Cargo tests (linux-x64-gnu)
+    name: Cargo clippy & tests (linux-x64-gnu)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           key: cargo-tests
           cache-on-failure: true
+      # Clippy as an error, in a job the publish waits for. These crates read
+      # files the project's users can write (the docs corpus, the sources a
+      # trace walks); the lints that catch a panic on hostile input are worth
+      # more here than the ones that catch a style. --locked: a Cargo.lock
+      # that does not match Cargo.toml fails instead of being re-resolved.
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace
         # Embeddings off here too, whatever the runner's environment says.
         env:
