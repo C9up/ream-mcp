@@ -6,7 +6,7 @@
  * Atlas import is exercised by the `migration-*` integration tests.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -165,11 +165,11 @@ describe("resolveMigrationsTable", () => {
 		expect(resolveMigrationsTable(tmpRoot)).toBe("from_env");
 	});
 
-	it("defaults to _migrations when env and reamrc both miss", () => {
-		expect(resolveMigrationsTable(tmpRoot)).toBe("_migrations");
+	it("defaults to atlas's ream_migrations when env and config all miss", () => {
+		expect(resolveMigrationsTable(tmpRoot)).toBe("ream_migrations");
 	});
 
-	it("defaults to _migrations when reamrc has no migrations.table", () => {
+	it("defaults to ream_migrations when reamrc has no migrations table", () => {
 		writeFileSync(
 			join(tmpRoot, "reamrc.ts"),
 			`export default {
@@ -179,7 +179,48 @@ describe("resolveMigrationsTable", () => {
 				}
 			};`,
 		);
-		expect(resolveMigrationsTable(tmpRoot)).toBe("_migrations");
+		expect(resolveMigrationsTable(tmpRoot)).toBe("ream_migrations");
+	});
+
+	it("reads migrations.tableName from atlas's config/database.ts", () => {
+		mkdirSync(join(tmpRoot, "config"));
+		writeFileSync(
+			join(tmpRoot, "config", "database.ts"),
+			`import { defineConfig } from "@c9up/atlas";
+			export default defineConfig({
+				connection: "main",
+				connections: { main: { url: "sqlite::memory:" } },
+				migrations: { paths: ["database/migrations"], tableName: "schema_log" },
+			});`,
+		);
+		expect(resolveMigrationsTable(tmpRoot)).toBe("schema_log");
+	});
+
+	it("prefers tableName over the older table key, as atlas does", () => {
+		writeFileSync(
+			join(tmpRoot, "reamrc.ts"),
+			`export default {
+				database: {
+					default: "main",
+					connections: { main: { url: "sqlite::memory:" } },
+					migrations: { table: "old_key", tableName: "new_key" }
+				}
+			};`,
+		);
+		expect(resolveMigrationsTable(tmpRoot)).toBe("new_key");
+	});
+
+	it("atlas's config/database.ts wins over reamrc.ts", () => {
+		mkdirSync(join(tmpRoot, "config"));
+		writeFileSync(
+			join(tmpRoot, "config", "database.ts"),
+			`export default { migrations: { tableName: "from_atlas_config" } };`,
+		);
+		writeFileSync(
+			join(tmpRoot, "reamrc.ts"),
+			`export default { database: { migrations: { table: "from_rc" } } };`,
+		);
+		expect(resolveMigrationsTable(tmpRoot)).toBe("from_atlas_config");
 	});
 });
 

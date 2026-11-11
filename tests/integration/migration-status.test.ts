@@ -101,8 +101,37 @@ describe("migration > status", () => {
 			}
 		}
 		expect(result.knownGaps).toContain(
-			"migrations tracking table `_migrations` not initialised: nothing has been migrated yet",
+			"migrations tracking table `ream_migrations` not initialised: nothing has been migrated yet",
 		);
+	});
+
+	it("sees the migrations atlas applied with its own default table", async () => {
+		// A project migrated by atlas (not by this tool) tracks into atlas's
+		// default table; status must read that table, not a name of its own.
+		const atlas = await import("@c9up/atlas");
+		const url = defined(process.env.REAM_DATABASE_URL);
+		const connection = await atlas.createNapiConnection(url);
+		try {
+			const runner = new atlas.MigrationRunner(connection, {
+				migrationsDir: join(FIXTURE, "database", "migrations"),
+				dialect: "sqlite",
+			});
+			await runner.init();
+			await runner.migrate();
+		} finally {
+			await connection.close();
+		}
+
+		const result = (await dispatchMigration(
+			FIXTURE,
+			"migration.status",
+		)) as StatusShape;
+		expect(result.applied.map((m) => m.id)).toEqual([
+			"1700000000_create_users",
+			"1700000100_create_posts",
+		]);
+		expect(result.pending).toEqual([]);
+		expect(result.currentBatch).toBe(1);
 	});
 
 	it("returns empty applied/pending and a knownGap when migrations dir is missing", async () => {

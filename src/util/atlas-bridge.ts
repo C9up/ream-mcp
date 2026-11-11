@@ -95,7 +95,7 @@ function resolveFromReamrc(root: string): string | null {
 	const rcPath = join(root, "reamrc.ts");
 	if (!existsSync(rcPath)) return null;
 	try {
-		const objLit = loadReamrcConfigObject(rcPath);
+		const objLit = loadConfigObject(rcPath);
 		if (!objLit) return null;
 
 		const dbObj = getObjectProperty(objLit, "database");
@@ -121,10 +121,8 @@ function resolveFromReamrc(root: string): string | null {
 	}
 }
 
-/** Parse `reamrc.ts` and unwrap its default export to the config object literal. */
-function loadReamrcConfigObject(
-	rcPath: string,
-): ObjectLiteralExpression | null {
+/** Parse a config file and unwrap its default export to the object literal. */
+function loadConfigObject(rcPath: string): ObjectLiteralExpression | null {
 	const project = new Project({
 		skipFileDependencyResolution: true,
 		useInMemoryFileSystem: false,
@@ -212,13 +210,16 @@ export function resolveMigrationsDir(root: string): string {
 	return join(root, "database", "migrations");
 }
 
-const DEFAULT_MIGRATIONS_TABLE = "_migrations";
+/** The tracking table atlas's `MigrationRunner` uses when none is configured. */
+const DEFAULT_MIGRATIONS_TABLE = "ream_migrations";
 
 /**
  * Resolve the migrations tracking-table name. Precedence order:
  *   1. `process.env.REAM_MIGRATIONS_TABLE`
- *   2. `<root>/reamrc.ts` → `database.migrations.table`
- *   3. `"_migrations"` (default)
+ *   2. `<root>/config/database.ts` → `migrations.tableName` (or the older
+ *      `migrations.table`) — the config atlas itself reads at boot
+ *   3. `<root>/reamrc.ts` → `database.migrations.tableName` / `.table`
+ *   4. `"ream_migrations"` — atlas's own default
  *
  * No identifier validation here — `MigrationRunner` validates synchronously
  * at construction and throws `AtlasError("E_MIGRATION_INVALID_TABLE_NAME")`.
@@ -226,46 +227,47 @@ const DEFAULT_MIGRATIONS_TABLE = "_migrations";
 export function resolveMigrationsTable(root: string): string {
 	const override = process.env.REAM_MIGRATIONS_TABLE;
 	if (typeof override === "string" && override.length > 0) return override;
-	const fromRc = resolveMigrationsTableFromReamrc(root);
-	return fromRc ?? DEFAULT_MIGRATIONS_TABLE;
+	return (
+		resolveMigrationsTableFromAtlasConfig(root) ??
+		resolveMigrationsTableFromReamrc(root) ??
+		DEFAULT_MIGRATIONS_TABLE
+	);
+}
+
+function resolveMigrationsTableFromAtlasConfig(root: string): string | null {
+	const configPath = join(root, "config", "database.ts");
+	if (!existsSync(configPath)) return null;
+	try {
+		const objLit = loadConfigObject(configPath);
+		if (!objLit) return null;
+		const migrationsObj = getObjectProperty(objLit, "migrations");
+		return migrationsObj ? readTableName(migrationsObj) : null;
+	} catch {
+		return null;
+	}
 }
 
 function resolveMigrationsTableFromReamrc(root: string): string | null {
 	const rcPath = join(root, "reamrc.ts");
 	if (!existsSync(rcPath)) return null;
 	try {
-		const project = new Project({
-			skipFileDependencyResolution: true,
-			useInMemoryFileSystem: false,
-		});
-		project.addSourceFileAtPath(rcPath);
-		const sf = project.getSourceFile(rcPath);
-		if (!sf) return null;
-		const [firstExport] = sf.getExportedDeclarations().get("default") ?? [];
-		if (firstExport === undefined) return null;
-		const objLit = unwrapToObjectLiteral(firstExport);
+		const objLit = loadConfigObject(rcPath);
 		if (!objLit) return null;
-
-		const dbProp = objLit.getProperty("database");
-		if (!dbProp || !Node.isPropertyAssignment(dbProp)) return null;
-		const dbObj = dbProp.getInitializer();
-		if (!dbObj || !Node.isObjectLiteralExpression(dbObj)) return null;
-
-		const migrationsProp = dbObj.getProperty("migrations");
-		if (!migrationsProp || !Node.isPropertyAssignment(migrationsProp))
-			return null;
-		const migrationsObj = migrationsProp.getInitializer();
-		if (!migrationsObj || !Node.isObjectLiteralExpression(migrationsObj))
-			return null;
-
-		const tableProp = migrationsObj.getProperty("table");
-		if (!tableProp || !Node.isPropertyAssignment(tableProp)) return null;
-		const tableInit = tableProp.getInitializer();
-		if (!tableInit) return null;
-		return evaluateString(tableInit);
+		const dbObj = getObjectProperty(objLit, "database");
+		if (!dbObj) return null;
+		const migrationsObj = getObjectProperty(dbObj, "migrations");
+		return migrationsObj ? readTableName(migrationsObj) : null;
 	} catch {
 		return null;
 	}
+}
+
+/** `tableName` wins over the older `table`, as in atlas's provider. */
+function readTableName(migrationsObj: ObjectLiteralExpression): string | null {
+	return (
+		getStringProperty(migrationsObj, "tableName") ??
+		getStringProperty(migrationsObj, "table")
+	);
 }
 
 export function detectDialect(url: string): Dialect | null {
