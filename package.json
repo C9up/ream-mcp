@@ -29,7 +29,6 @@
     "index.*.node",
     "index.d.ts",
     "index.js",
-    "scripts",
     "src"
   ],
   "scripts": {
