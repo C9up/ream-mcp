@@ -216,8 +216,10 @@ const DEFAULT_MIGRATIONS_TABLE = "ream_migrations";
 /**
  * Resolve the migrations tracking-table name. Precedence order:
  *   1. `process.env.REAM_MIGRATIONS_TABLE`
- *   2. `<root>/config/database.ts` → `migrations.tableName` (or the older
- *      `migrations.table`) — the config atlas itself reads at boot
+ *   2. `<root>/config/database.ts` → the default connection's
+ *      `connections.<connection>.migrations.tableName` (where `configure`
+ *      writes it), then the root `migrations.tableName` (or the older
+ *      `.table`) — the order atlas's provider reads them at boot
  *   3. `<root>/reamrc.ts` → `database.migrations.tableName` / `.table`
  *   4. `"ream_migrations"` — atlas's own default
  *
@@ -240,11 +242,28 @@ function resolveMigrationsTableFromAtlasConfig(root: string): string | null {
 	try {
 		const objLit = loadConfigObject(configPath);
 		if (!objLit) return null;
-		const migrationsObj = getObjectProperty(objLit, "migrations");
-		return migrationsObj ? readTableName(migrationsObj) : null;
+		const rootMigrations = getObjectProperty(objLit, "migrations");
+		return (
+			readDefaultConnectionTableName(objLit) ??
+			(rootMigrations ? readTableName(rootMigrations) : null)
+		);
 	} catch {
 		return null;
 	}
+}
+
+/** `connections[connection].migrations.tableName`, as atlas's provider reads it first. */
+function readDefaultConnectionTableName(
+	config: ObjectLiteralExpression,
+): string | null {
+	const defaultName = getStringProperty(config, "connection");
+	const connections = getObjectProperty(config, "connections");
+	if (defaultName === null || connections === null) return null;
+	const connection = getObjectProperty(connections, defaultName);
+	const migrations = connection
+		? getObjectProperty(connection, "migrations")
+		: null;
+	return migrations ? readTableName(migrations) : null;
 }
 
 function resolveMigrationsTableFromReamrc(root: string): string | null {

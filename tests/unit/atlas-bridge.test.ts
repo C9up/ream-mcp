@@ -210,6 +210,36 @@ describe("resolveMigrationsTable", () => {
 		expect(resolveMigrationsTable(tmpRoot)).toBe("new_key");
 	});
 
+	it("reads the default connection's migrations block, where configure writes it", () => {
+		mkdirSync(join(tmpRoot, "config"));
+		writeFileSync(
+			join(tmpRoot, "config", "database.ts"),
+			`import { defineConfig } from "@c9up/atlas";
+			export default defineConfig({
+				connection: "main",
+				connections: {
+					other: { url: "sqlite::memory:", migrations: { tableName: "not_this_one" } },
+					main: { url: "sqlite::memory:", migrations: { tableName: "per_connection" } },
+				},
+				migrations: { tableName: "root_fallback" },
+			});`,
+		);
+		expect(resolveMigrationsTable(tmpRoot)).toBe("per_connection");
+	});
+
+	it("falls back to the root block when the default connection names no table", () => {
+		mkdirSync(join(tmpRoot, "config"));
+		writeFileSync(
+			join(tmpRoot, "config", "database.ts"),
+			`export default {
+				connection: "main",
+				connections: { main: { url: "sqlite::memory:", migrations: { paths: ["db"] } } },
+				migrations: { tableName: "root_fallback" },
+			};`,
+		);
+		expect(resolveMigrationsTable(tmpRoot)).toBe("root_fallback");
+	});
+
 	it("atlas's config/database.ts wins over reamrc.ts", () => {
 		mkdirSync(join(tmpRoot, "config"));
 		writeFileSync(
