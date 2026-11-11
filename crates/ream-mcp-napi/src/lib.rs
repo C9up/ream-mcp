@@ -14,6 +14,9 @@ use std::sync::Mutex;
 use napi_derive::napi;
 use once_cell::sync::Lazy;
 
+use ream_mcp_core::embeddings::{
+    model_dir, model_url, MODEL_FILES, MODEL_NAME, MODEL_REPO, MODEL_REVISION,
+};
 use ream_mcp_core::indexer::{index, IndexConfig};
 use ream_mcp_core::search::{search, SearchOptions, SearchResult};
 use ream_mcp_core::store::{Store, StoredChunk};
@@ -46,6 +49,32 @@ fn with_store<R>(root: &str, f: impl FnOnce(&mut Store) -> R) -> Result<R, Strin
 #[napi(js_name = "version")]
 pub fn version() -> String {
     ream_mcp_core::version().to_string()
+}
+
+/// The pinned embeddings model, for `ream-mcp-reindex --download-model`.
+/// Returns JSON `{ name, repo, revision, dir, files: [{ path, url, sha256,
+/// bytes }] }`; `dir` is where the server loads the files from.
+#[napi(js_name = "embeddingModel")]
+pub fn embedding_model() -> napi::Result<String> {
+    let files: Vec<_> = MODEL_FILES
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "path": f.path,
+                "url": model_url(f),
+                "sha256": f.sha256,
+                "bytes": f.bytes,
+            })
+        })
+        .collect();
+    let out = serde_json::json!({
+        "name": MODEL_NAME,
+        "repo": MODEL_REPO,
+        "revision": MODEL_REVISION,
+        "dir": model_dir().to_string_lossy(),
+        "files": files,
+    });
+    serde_json::to_string(&out).map_err(|e| napi::Error::from_reason(format!("json: {e}")))
 }
 
 /// Run an incremental (or full) corpus index. Returns the JSON-encoded

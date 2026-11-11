@@ -1,34 +1,91 @@
-//! fastembed-rs lazy-init wrapper. Resolves the cache dir from
-//! `REAM_MCP_EMBED_CACHE_DIR` → `XDG_CACHE_HOME/ream-mcp/embeddings` →
-//! `~/.cache/ream-mcp/embeddings`. If init fails (offline + cold cache),
-//! `EmbeddingsStatus::Unavailable` is returned and the indexer/search
-//! fall back to BM25-only with `confidence: "low"`.
+//! Embeddings for the docs index: BAAI bge-small-en-v1.5 through ONNX
+//! Runtime. Off unless asked for, and never fetched from here.
 //!
-//! Initialisation happens on a BACKGROUND thread, and `status()` answers
-//! immediately either way. It used to build the model inline, holding the
-//! status mutex: on a cold cache that is hundreds of megabytes fetched with no
-//! timeout and no progress, so the first search of a fresh install hung — and
-//! every other caller hung behind the mutex with it. Answering "not yet" costs
-//! that search its vectors and nothing else, because BM25 is already the
-//! documented fallback and `confidence: "low"` already says so.
+//! - **Opt-in.** `REAM_MCP_EMBEDDINGS=1` turns them on; without it every
+//!   search is BM25-only with `confidence: "low"` (the documented fallback),
+//!   and nothing is loaded. `REAM_MCP_DISABLE_EMBEDDINGS` wins over it.
+//! - **No network.** This crate links no HTTP client. The model files are
+//!   fetched once, on purpose, by `ream-mcp-reindex --download-model`, which
+//!   says what it fetches and from where. The server only ever reads them
+//!   from `model_dir()`.
+//! - **Pinned.** `MODEL_FILES` pins the repository revision and the SHA-256
+//!   and size of every file; the download command checks them, and so does
+//!   every load here: a file that does not match is refused.
+//! - **Explicit runtime.** ONNX Runtime is a shared library the user installs.
+//!   `ORT_DYLIB_PATH` must name it by absolute path; the library search path
+//!   is never consulted.
 //!
-//! `REAM_MCP_EMBED_WAIT` opts back into building it inline, for the case where
-//! waiting is the right answer — indexing a repository once, deliberately.
+//! The cache directory is `REAM_MCP_EMBED_CACHE_DIR`, else
+//! `XDG_CACHE_HOME/ream-mcp/embeddings`, else `~/.cache/ream-mcp/embeddings`.
 //!
-//! One consequence worth knowing before it costs someone an afternoon: a
-//! warm-up in flight keeps the PROCESS alive until it finishes. `cargo test`
-//! without `REAM_MCP_DISABLE_EMBEDDINGS` therefore prints its results, passes,
-//! and then sits there for as long as the download takes — which reads as a
-//! hang after a green run rather than before one. `pnpm test:rust` and CI both
-//! set the variable; a bare `cargo test` does not.
+//! Loading happens on a BACKGROUND thread and `status()` answers immediately
+//! either way: reading and checking ~130 MB is not something a search should
+//! wait on. `REAM_MCP_EMBED_WAIT` loads inline instead, for a deliberate
+//! one-off index. A warm-up in flight keeps the process alive until it ends.
 
-use std::path::PathBuf;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
 
-use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use fastembed::{
+    InitOptionsUserDefined, Pooling, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
+};
 use once_cell::sync::OnceCell;
+use sha2::{Digest, Sha256};
+
+/// The model, as the download command names it.
+pub const MODEL_NAME: &str = "BAAI bge-small-en-v1.5 (ONNX)";
+/// The repository the files come from.
+pub const MODEL_REPO: &str = "Xenova/bge-small-en-v1.5";
+/// The repository revision every URL is pinned to.
+pub const MODEL_REVISION: &str = "ea104dacec62c0de699686887e3f920caeb4f3e3";
+
+/// One file of the model, pinned by size and SHA-256.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelFile {
+    /// Path inside the repository, and inside `model_dir()`.
+    pub path: &'static str,
+    pub sha256: &'static str,
+    pub bytes: u64,
+}
+
+pub const MODEL_FILES: &[ModelFile] = &[
+    ModelFile {
+        path: "config.json",
+        sha256: "fa73f90bf92c8cace1fbcb709626306f2bdbc9ea3e5b5f94b440df9b6aa56350",
+        bytes: 683,
+    },
+    ModelFile {
+        path: "special_tokens_map.json",
+        sha256: "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+        bytes: 125,
+    },
+    ModelFile {
+        path: "tokenizer_config.json",
+        sha256: "9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3",
+        bytes: 366,
+    },
+    ModelFile {
+        path: "tokenizer.json",
+        sha256: "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+        bytes: 711_396,
+    },
+    ModelFile {
+        path: "onnx/model.onnx",
+        sha256: "828e1496d7fabb79cfa4dcd84fa38625c0d3d21da474a00f08db0f559940cf35",
+        bytes: 133_093_490,
+    },
+];
+
+/// The pinned download URL of `file`.
+pub fn model_url(file: &ModelFile) -> String {
+    format!(
+        "https://huggingface.co/{MODEL_REPO}/resolve/{MODEL_REVISION}/{}",
+        file.path
+    )
+}
 
 /// 384-dim cosine vector.
 pub type Embedding = Vec<f32>;
@@ -66,6 +123,24 @@ pub fn cache_dir() -> PathBuf {
     std::env::temp_dir().join("ream-mcp-embeddings")
 }
 
+/// Where the pinned model files live.
+pub fn model_dir() -> PathBuf {
+    cache_dir().join("bge-small-en-v1.5").join(MODEL_REVISION)
+}
+
+/// Why embeddings stay off, or `None` when they were asked for.
+fn opt_in(disabled: Option<OsString>, enabled: Option<OsString>) -> Option<String> {
+    if disabled.is_some() {
+        return Some("disabled via REAM_MCP_DISABLE_EMBEDDINGS".to_string());
+    }
+    if enabled.as_deref() != Some(std::ffi::OsStr::new("1")) {
+        return Some(
+            "off: set REAM_MCP_EMBEDDINGS=1 after `ream-mcp-reindex --download-model`".to_string(),
+        );
+    }
+    None
+}
+
 pub fn status() -> EmbeddingsStatus {
     {
         let guard = match STATUS.lock() {
@@ -77,30 +152,26 @@ pub fn status() -> EmbeddingsStatus {
         }
     }
 
-    // Opt-out for CI / offline: skip the fastembed model + ONNX-runtime download
-    // (hundreds of MB, fetched lazily on first use) and fall back to BM25-only.
-    //
-    // `pnpm test:rust` sets it too. Without that, a cold cache turned the test
-    // suite into a multi-minute download with no output — the run looked hung,
-    // and the forty tests it was waiting to run take a hundredth of a second.
-    if std::env::var("REAM_MCP_DISABLE_EMBEDDINGS").is_ok() {
-        let s =
-            EmbeddingsStatus::Unavailable("disabled via REAM_MCP_DISABLE_EMBEDDINGS".to_string());
+    if let Some(reason) = opt_in(
+        std::env::var_os("REAM_MCP_DISABLE_EMBEDDINGS"),
+        std::env::var_os("REAM_MCP_EMBEDDINGS"),
+    ) {
+        let s = EmbeddingsStatus::Unavailable(reason);
         record(s.clone());
         return s;
     }
 
-    // Opt-in to the old inline behaviour, for the caller that would rather wait
-    // than index without vectors.
+    // Load inline, for the caller that would rather wait than index without
+    // vectors.
     if std::env::var("REAM_MCP_EMBED_WAIT").is_ok() {
         let s = init_model();
         record(s.clone());
         return s;
     }
 
-    // Otherwise: answer now, build behind. `compare_exchange` rather than
+    // Otherwise: answer now, load behind. `compare_exchange` rather than
     // `swap`, so a second caller arriving mid-warm-up does not start a second
-    // download of the same model.
+    // load of the same model.
     if WARMING
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_ok()
@@ -111,33 +182,107 @@ pub fn status() -> EmbeddingsStatus {
             WARMING.store(false, Ordering::Release);
         });
     }
-    EmbeddingsStatus::Unavailable("model still initialising in the background".to_string())
+    EmbeddingsStatus::Unavailable("model still loading in the background".to_string())
 }
 
-/// Build the model. Runs WITHOUT the status lock held — on a cold cache this
-/// is a multi-hundred-megabyte download, and holding the lock across it is
-/// what made every other caller wait for it.
 fn init_model() -> EmbeddingsStatus {
-    init_model_in(cache_dir())
-}
-
-/// The body of {@link init_model}, taking its cache directory, so the failure
-/// path can be exercised without env vars or a network fetch.
-fn init_model_in(cache: PathBuf) -> EmbeddingsStatus {
-    if let Err(err) = std::fs::create_dir_all(&cache) {
-        return EmbeddingsStatus::Unavailable(format!("cache dir create failed: {err}"));
-    }
-    let opts = InitOptions::new(EmbeddingModel::BGESmallENV15).with_cache_dir(cache);
-    match TextEmbedding::try_new(opts) {
+    match load_model(&model_dir(), std::env::var_os("ORT_DYLIB_PATH")) {
         Ok(model) => {
-            // First-time success installs the model; a later attempt (after a
-            // previous Unavailable) hits `MODEL.set` as a no-op since the
-            // OnceCell is already populated.
+            // A later attempt (after an earlier Unavailable) finds the
+            // OnceCell populated and leaves it as it is.
             let _ = MODEL.set(Mutex::new(Some(model)));
             EmbeddingsStatus::Available
         }
-        Err(err) => EmbeddingsStatus::Unavailable(err.to_string()),
+        Err(reason) => EmbeddingsStatus::Unavailable(reason),
     }
+}
+
+/// The ONNX Runtime library `ORT_DYLIB_PATH` names: an absolute path to a
+/// file. Anything else is refused rather than left to the loader's search
+/// path, which is the environment's choice, not the user's.
+fn ort_library(value: Option<OsString>) -> Result<PathBuf, String> {
+    let Some(value) = value.filter(|v| !v.is_empty()) else {
+        return Err(
+            "ORT_DYLIB_PATH is not set: name the ONNX Runtime library by absolute path".to_string(),
+        );
+    };
+    let path = PathBuf::from(value);
+    if !path.is_absolute() {
+        return Err("ORT_DYLIB_PATH must be an absolute path".to_string());
+    }
+    if !path.is_file() {
+        return Err("ORT_DYLIB_PATH does not name a file".to_string());
+    }
+    Ok(path)
+}
+
+/// Read every file of `files` from `dir`, refusing any whose size or SHA-256
+/// differs from its pin. Returned in the order of `files`.
+fn read_verified(dir: &Path, files: &[ModelFile]) -> Result<Vec<Vec<u8>>, String> {
+    let mut out = Vec::with_capacity(files.len());
+    for file in files {
+        let path = dir.join(file.path);
+        let len = std::fs::metadata(&path).map(|m| m.len()).map_err(|_| {
+            format!(
+                "model file {} is missing: run `ream-mcp-reindex --download-model`",
+                file.path
+            )
+        })?;
+        if len != file.bytes {
+            return Err(format!(
+                "model file {} is {len} bytes, expected {}",
+                file.path, file.bytes
+            ));
+        }
+        let bytes = std::fs::read(&path).map_err(|e| format!("model file {}: {e}", file.path))?;
+        if sha256_hex(&bytes) != file.sha256 {
+            return Err(format!(
+                "model file {} does not match its pinned SHA-256",
+                file.path
+            ));
+        }
+        out.push(bytes);
+    }
+    Ok(out)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+fn load_model(dir: &Path, ort: Option<OsString>) -> Result<TextEmbedding, String> {
+    let ort = ort_library(ort)?;
+    let mut files = read_verified(dir, MODEL_FILES)?.into_iter();
+    let mut next = || {
+        files
+            .next()
+            .ok_or_else(|| "model manifest is shorter than expected".to_string())
+    };
+    // The order of MODEL_FILES.
+    let config_file = next()?;
+    let special_tokens_map_file = next()?;
+    let tokenizer_config_file = next()?;
+    let tokenizer_file = next()?;
+    let onnx = next()?;
+    // Once per process; a second call keeps the library already loaded.
+    ort::init_from(&ort)
+        .map_err(|e| format!("ONNX Runtime: {e}"))?
+        .commit();
+    let model = UserDefinedEmbeddingModel::new(
+        onnx,
+        TokenizerFiles {
+            tokenizer_file,
+            config_file,
+            special_tokens_map_file,
+            tokenizer_config_file,
+        },
+    )
+    .with_pooling(Pooling::Cls);
+    TextEmbedding::try_new_from_user_defined(model, InitOptionsUserDefined::new())
+        .map_err(|e| e.to_string())
 }
 
 /// Publish an outcome. A poisoned lock is not worth panicking over: the next
@@ -249,24 +394,87 @@ mod tests {
     }
 
     #[test]
-    fn a_cache_dir_that_cannot_be_created_reports_rather_than_panicking() {
-        // A path under a regular file can never be a directory. This is the
-        // one branch of init reachable without a network fetch, and it is the
-        // branch that decides whether a broken cache degrades to BM25 or takes
-        // the caller down.
-        //
-        // The background warm-up itself has no automated test: exercising it
-        // needs a cold model cache and a real several-hundred-megabyte fetch,
-        // and a test that skips itself whenever REAM_MCP_DISABLE_EMBEDDINGS is
-        // set — which is how CI runs — would pass without checking anything.
-        let mut file = std::env::temp_dir();
-        file.push("ream-mcp-embeddings-not-a-dir");
-        std::fs::write(&file, b"x").expect("write probe file");
-        let status = init_model_in(file.join("under-a-file"));
-        assert!(
-            matches!(&status, EmbeddingsStatus::Unavailable(reason) if reason.contains("cache dir create failed")),
-            "expected a cache-dir failure, got {status:?}"
+    fn embeddings_are_off_unless_asked_for() {
+        let off = opt_in(None, None).unwrap_or_default();
+        assert!(off.contains("REAM_MCP_EMBEDDINGS=1"), "{off}");
+        assert!(opt_in(None, Some("true".into())).is_some());
+        assert!(opt_in(None, Some("0".into())).is_some());
+        assert!(opt_in(None, Some("1".into())).is_none());
+        assert!(opt_in(Some("1".into()), Some("1".into())).is_some());
+    }
+
+    #[test]
+    fn the_onnx_runtime_must_be_named_by_absolute_path() {
+        assert!(ort_library(None).is_err());
+        assert!(ort_library(Some("".into())).is_err());
+        assert!(ort_library(Some("libonnxruntime.so".into())).is_err());
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert!(ort_library(Some(dir.path().join("missing.so").into())).is_err());
+        let lib = dir.path().join("libonnxruntime.so");
+        std::fs::write(&lib, b"x").expect("write");
+        assert_eq!(ort_library(Some(lib.clone().into())), Ok(lib));
+    }
+
+    const HELLO: ModelFile = ModelFile {
+        path: "sub/hello.txt",
+        // sha256("hello")
+        sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        bytes: 5,
+    };
+
+    #[test]
+    fn model_files_are_checked_against_their_pins() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = read_verified(dir.path(), &[HELLO])
+            .err()
+            .unwrap_or_default();
+        assert!(missing.contains("--download-model"), "{missing}");
+
+        std::fs::create_dir_all(dir.path().join("sub")).expect("mkdir");
+        let path = dir.path().join(HELLO.path);
+        std::fs::write(&path, b"hello").expect("write");
+        assert_eq!(
+            read_verified(dir.path(), &[HELLO]),
+            Ok(vec![b"hello".to_vec()])
         );
-        let _ = std::fs::remove_file(&file);
+
+        // Same size, different bytes: a tampered file.
+        std::fs::write(&path, b"jello").expect("write");
+        let tampered = read_verified(dir.path(), &[HELLO])
+            .err()
+            .unwrap_or_default();
+        assert!(tampered.contains("SHA-256"), "{tampered}");
+
+        std::fs::write(&path, b"hello!").expect("write");
+        let resized = read_verified(dir.path(), &[HELLO])
+            .err()
+            .unwrap_or_default();
+        assert!(resized.contains("expected 5"), "{resized}");
+    }
+
+    #[test]
+    fn a_missing_model_is_refused_without_touching_the_network() {
+        // The ONNX Runtime is checked first, then the files; neither path
+        // fetches anything, and both name what the user must do.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lib = dir.path().join("libonnxruntime.so");
+        std::fs::write(&lib, b"x").expect("write");
+        let no_ort = load_model(dir.path(), None).err().unwrap_or_default();
+        assert!(no_ort.contains("ORT_DYLIB_PATH"), "{no_ort}");
+        let no_files = load_model(dir.path(), Some(lib.into()))
+            .err()
+            .unwrap_or_default();
+        assert!(no_files.contains("--download-model"), "{no_files}");
+    }
+
+    #[test]
+    fn every_pinned_file_has_a_pinned_url() {
+        for file in MODEL_FILES {
+            assert_eq!(file.sha256.len(), 64);
+            assert!(file.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
+            let url = model_url(file);
+            assert!(url.starts_with("https://huggingface.co/"), "{url}");
+            assert!(url.contains(MODEL_REVISION), "{url}");
+        }
     }
 }

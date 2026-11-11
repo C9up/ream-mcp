@@ -48,6 +48,29 @@ The server auto-detects the Ream project root by walking up from
 
 Set `REAM_PROJECT_ROOT=/path/to/project` to override.
 
+## Embeddings are opt-in
+
+Search is BM25 by default; nothing is downloaded and no model is loaded. To add
+vector search, fetch the model once, on purpose:
+
+```bash
+npx ream-mcp-reindex --download-model
+```
+
+It prints what it fetches and from where (BAAI bge-small-en-v1.5 as ONNX,
+about 134 MB, from `huggingface.co` at a pinned revision), checks every file
+against the SHA-256 pinned in the native core, and deletes anything that does
+not match. Then launch the server with:
+
+| Launch env | Meaning |
+|---|---|
+| `REAM_MCP_EMBEDDINGS=1` | load the downloaded model (checked again on every load) |
+| `ORT_DYLIB_PATH=/abs/path/libonnxruntime.so` | the ONNX Runtime library to load; required, never looked up on the library search path |
+| `REAM_MCP_DISABLE_EMBEDDINGS=1` | force embeddings off, whatever else is set |
+
+The server itself never fetches anything: a missing or altered model leaves
+search on BM25 and says why in `knownGaps`.
+
 ## Migration writes are off by default
 
 `migration.run` and `migration.rollback` preview by default. A real run

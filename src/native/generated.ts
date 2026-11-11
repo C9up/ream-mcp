@@ -7,6 +7,14 @@
 export declare function version(): string;
 
 /**
+ * The pinned embeddings model, for `ream-mcp-reindex --download-model`.
+ * Returns JSON `{ name, repo, revision, dir, files: [{ path, url, sha256,
+ * bytes }] }`; `dir` is where the server loads the files from.
+ */
+
+export declare function embeddingModel(): string;
+
+/**
  * Run an incremental (or full) corpus index. Returns the JSON-encoded
  * `IndexStats` (`{ files_seen, files_indexed, files_unchanged,
  * files_skipped, chunks_total, elapsed_ms }`).

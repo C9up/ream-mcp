@@ -50,4 +50,5 @@ export const core = {
 	getChunk: native.getChunk,
 	trace: native.trace,
 	auditDrift: native.auditDrift,
+	embeddingModel: native.embeddingModel,
 };
