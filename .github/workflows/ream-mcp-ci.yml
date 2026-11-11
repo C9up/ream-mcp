@@ -164,13 +164,23 @@ jobs:
         env:
           REAM_MCP_DISABLE_EMBEDDINGS: '1'
         # No --coverage here: this matrix proves the NAPI binary loads on each
-        # platform, and each one skips a different set of tests (win32 skips 44).
-        # Gating coverage on the slice a platform happens to run sets the floor
-        # by whichever skips the most. It is measured once, on the host job.
-        run: pnpm exec vitest run --reporter=default --reporter=json --outputFile=test-results.json
+        # platform; coverage is measured once, on the host job.
+        #
+        # Windows runs everything but the `*.posix.test.ts` files (stdio server
+        # lifecycle, `#!/usr/bin/env node` stubs, rustup): they are excluded by
+        # name, so the count is explicit and nothing is skipped at runtime.
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pnpm exec vitest run --exclude '**/*.posix.test.ts' --reporter=default --reporter=json --outputFile=test-results.json
+          else
+            pnpm exec vitest run --reporter=default --reporter=json --outputFile=test-results.json
+          fi
         shell: bash
 
-      - name: Smoke gate — tests ran AND some passed (Linux/macOS)
+      # Every test that is collected must pass: a skipped, todo or pending test
+      # fails the gate, as in every other NAPI package. A `.node` that loads but
+      # makes a suite skip itself is exactly the failure this exists to catch.
+      - name: Smoke gate — tests ran AND zero skipped (Linux/macOS)
         if: matrix.test && runner.os != 'Windows'
         run: |
           if [ ! -f test-results.json ]; then
@@ -182,21 +192,16 @@ jobs:
             echo "::error::0 tests ran — test discovery is broken (check vitest include glob)"
             exit 1
           fi
-          # A NAPI load failure makes the .node-dependent tests *fail* (vitest exits
-          # non-zero before this gate), so "some tests passed" is the real signal.
-          # Skips here are intentional env gates (generate-real-cli needs the
-          # monorepo ream-cli sibling; bmad.* need a _bmad-output fixture) that
-          # cannot run in a standalone published-repo checkout.
-          passed=$(jq '[.testResults[].assertionResults[] | select(.status=="passed")] | length' test-results.json)
-          skipped=$(jq '[.testResults[].assertionResults[] | select(.status=="skipped")] | length' test-results.json)
-          if [ "$passed" -eq 0 ]; then
-            echo "::error::0 tests passed — NAPI binary failed to load or the suite broke"
+          notpassed=$(jq '[.testResults[].assertionResults[] | select(.status!="passed")] | length' test-results.json)
+          if [ "$notpassed" -ne 0 ]; then
+            jq -r '.testResults[].assertionResults[] | select(.status!="passed") | "\(.status): \(.fullName)"' test-results.json
+            echo "::error::$notpassed of $total tests did not pass (skipped/todo/pending count as failures)"
             exit 1
           fi
-          echo "Smoke gate OK: $passed passed, $skipped skipped (intentional env-gated integration tests)"
+          echo "Smoke gate OK: $total passed, 0 skipped"
         shell: bash
 
-      - name: Smoke gate — tests ran AND some passed (Windows)
+      - name: Smoke gate — tests ran AND zero skipped (Windows)
         if: matrix.test && runner.os == 'Windows'
         run: |
           if (-not (Test-Path test-results.json)) {
@@ -208,16 +213,12 @@ jobs:
             Write-Error "0 tests ran — test discovery is broken (check vitest include glob)"
             exit 1
           }
-          # A NAPI load failure makes the .node-dependent tests fail (vitest exits
-          # non-zero before this gate); intentional env-gated integration tests
-          # (generate-real-cli, bmad.*) skip in a standalone checkout. So "some
-          # tests passed" is the real signal, not "zero skipped".
-          $passed = python -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(1 for r in d['testResults'] for a in r['assertionResults'] if a['status']=='passed'))" test-results.json
-          if ([int]$passed -eq 0) {
-            Write-Error "0 tests passed — NAPI binary failed to load or the suite broke"
+          $notpassed = python -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(1 for r in d['testResults'] for a in r['assertionResults'] if a['status']!='passed'))" test-results.json
+          if ([int]$notpassed -ne 0) {
+            Write-Error "$notpassed of $total tests did not pass (skipped/todo/pending count as failures)"
             exit 1
           }
-          Write-Output "Smoke gate OK: $passed passed"
+          Write-Output "Smoke gate OK: $total passed, 0 skipped"
         shell: pwsh
 
       - name: Upload artefact
@@ -261,7 +262,19 @@ jobs:
       - run: pnpm install
       - run: pnpm build:napi
       - run: pnpm build:ts
-      - run: pnpm exec vitest run --coverage
+      - run: pnpm exec vitest run --coverage --reporter=default --reporter=json --outputFile=test-results.json
+        env:
+          REAM_MCP_DISABLE_EMBEDDINGS: '1'
+      - name: Zero skipped
+        run: |
+          total=$(jq '[.testResults[].assertionResults[]] | length' test-results.json)
+          notpassed=$(jq '[.testResults[].assertionResults[] | select(.status!="passed")] | length' test-results.json)
+          if [ "$total" -eq 0 ] || [ "$notpassed" -ne 0 ]; then
+            jq -r '.testResults[].assertionResults[] | select(.status!="passed") | "\(.status): \(.fullName)"' test-results.json
+            echo "::error::$notpassed of $total tests did not pass (skipped/todo/pending count as failures)"
+            exit 1
+          fi
+          echo "$total passed, 0 skipped"
 
   # Publish job — gated on workflow_dispatch (manual maintainer trigger).
   # Requires NPM_TOKEN secret + a v<MAJOR>.<MINOR>.<PATCH> tag at HEAD matching

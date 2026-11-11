@@ -19,19 +19,12 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchGenerate } from "../../src/tools/generate.js";
-import { canExecInTmp } from "../test-utils.js";
 
 /** Narrow away null/undefined without a `!` assertion (which lies to the compiler). */
 function defined<T>(value: T | null | undefined): T {
 	if (value == null) throw new Error("expected a defined value");
 	return value;
 }
-
-// Skip when the system tmpdir refuses exec (noexec mount on hardened
-// CIs). All `describe` blocks below dispatch through the Node stub
-// installed under tmpdir() via REAM_BIN; without exec permission the
-// spawn surfaces as EPERM and masks the real test intent.
-const describeIfTmpExec = canExecInTmp() ? describe : describe.skip;
 
 let tmpRoot: string;
 let prevBin: string | undefined;
@@ -133,7 +126,7 @@ if (dryRun) {
 	return path;
 }
 
-describeIfTmpExec("generate.controller — dry-run by default", () => {
+describe("generate.controller — dry-run by default", () => {
 	it("returns plannedFiles[] without writing anything", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.controller", {
 			module: "orders",
@@ -223,7 +216,7 @@ describeIfTmpExec("generate.controller — dry-run by default", () => {
 	});
 });
 
-describeIfTmpExec("generate.module — umbrella", () => {
+describe("generate.module — umbrella", () => {
 	it("returns 4 plannedFiles for the resource bundle", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.module", {
 			module: "orders",
@@ -246,7 +239,7 @@ describeIfTmpExec("generate.module — umbrella", () => {
 	});
 });
 
-describeIfTmpExec("generate.migration — class-scoped name only", () => {
+describe("generate.migration — class-scoped name only", () => {
 	it("does not require a module argument", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.migration", {
 			name: "CreateOrders",
@@ -259,7 +252,7 @@ describeIfTmpExec("generate.migration — class-scoped name only", () => {
 	});
 });
 
-describeIfTmpExec("generate.seeder — the name is the only positional", () => {
+describe("generate.seeder — the name is the only positional", () => {
 	it("passes the name straight through to Atlas's make:seeder", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.seeder", {
 			name: "User",
@@ -276,7 +269,7 @@ describeIfTmpExec("generate.seeder — the name is the only positional", () => {
 	});
 });
 
-describeIfTmpExec("dryRun consent rules (H4)", () => {
+describe("dryRun consent rules (H4)", () => {
 	it("rejects dryRun:false alone (no confirm token)", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.controller", {
 			module: "orders",
@@ -305,7 +298,7 @@ describeIfTmpExec("dryRun consent rules (H4)", () => {
 	});
 });
 
-describeIfTmpExec("8 KB per-file cap surfaces via dispatcher (M10)", () => {
+describe("8 KB per-file cap surfaces via dispatcher (M10)", () => {
 	it("sets contentTruncated + top-level truncated:true + plannedFilesOverflowPath", async () => {
 		// Replace the stub with one that emits a >8 KB content.
 		mkdirSync(join(tmpRoot, "node_modules", ".bin"), { recursive: true });
@@ -345,7 +338,7 @@ process.stdout.write(JSON.stringify(payload) + "\\n");
 	});
 });
 
-describeIfTmpExec("confidence:medium when CLI emits warnings (L3)", () => {
+describe("confidence:medium when CLI emits warnings (L3)", () => {
 	it("returns confidence=medium when warnings array is non-empty", async () => {
 		// Emit a warning from the stub.
 		mkdirSync(join(tmpRoot, "node_modules", ".bin"), { recursive: true });

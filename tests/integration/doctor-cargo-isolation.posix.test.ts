@@ -20,9 +20,7 @@ import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchDoctor } from "../../src/tools/doctor.js";
-import { canExecInTmp } from "../test-utils.js";
 
-const posix = process.platform !== "win32" && canExecInTmp();
 const RUSTUP_CARGO = join(homedir(), ".cargo", "bin", "cargo");
 
 const VARS = [
@@ -55,7 +53,7 @@ function rustVersion(result: unknown): unknown {
 	return Object.fromEntries(Object.entries(result)).rustVersion;
 }
 
-describe.skipIf(!posix)("doctor.health cargo isolation", () => {
+describe("doctor.health cargo isolation", () => {
 	it("runs cargo from the home directory with rustup overrides neutralised", async () => {
 		const bin = join(base, "bin");
 		mkdirSync(bin);
@@ -99,31 +97,30 @@ describe.skipIf(!posix)("doctor.health cargo isolation", () => {
 		expect(existsSync(join(project, "PWNED"))).toBe(false);
 	});
 
-	it.skipIf(!existsSync(RUSTUP_CARGO))(
-		"ignores a project rust-toolchain.toml that points rustup at a repo binary",
-		async () => {
-			const toolchain = join(base, "tc");
-			mkdirSync(join(toolchain, "bin"), { recursive: true });
-			const pwned = join(base, "PWNED");
-			writeFileSync(
-				join(toolchain, "bin", "cargo"),
-				`#!/bin/sh\necho ran > "${pwned}"\necho "cargo 9.9.9 (fake)"\n`,
-			);
-			chmodSync(join(toolchain, "bin", "cargo"), 0o755);
-			const project = join(base, "project");
-			mkdirSync(project);
-			writeFileSync(
-				join(project, "rust-toolchain.toml"),
-				`[toolchain]\npath = "${toolchain}"\n`,
-			);
-			process.env.PATH = `${join(homedir(), ".cargo", "bin")}${delimiter}${process.env.PATH ?? ""}`;
-			delete process.env.RUSTUP_TOOLCHAIN;
-			process.chdir(project);
+	// Needs rustup at ~/.cargo/bin, as every POSIX CI runner and Rust
+	// developer machine has; without it this fails rather than skipping.
+	it("ignores a project rust-toolchain.toml that points rustup at a repo binary", async () => {
+		const toolchain = join(base, "tc");
+		mkdirSync(join(toolchain, "bin"), { recursive: true });
+		const pwned = join(base, "PWNED");
+		writeFileSync(
+			join(toolchain, "bin", "cargo"),
+			`#!/bin/sh\necho ran > "${pwned}"\necho "cargo 9.9.9 (fake)"\n`,
+		);
+		chmodSync(join(toolchain, "bin", "cargo"), 0o755);
+		const project = join(base, "project");
+		mkdirSync(project);
+		writeFileSync(
+			join(project, "rust-toolchain.toml"),
+			`[toolchain]\npath = "${toolchain}"\n`,
+		);
+		expect(existsSync(RUSTUP_CARGO)).toBe(true);
+		process.env.PATH = `${join(homedir(), ".cargo", "bin")}${delimiter}${process.env.PATH ?? ""}`;
+		delete process.env.RUSTUP_TOOLCHAIN;
+		process.chdir(project);
 
-			const result = await dispatchDoctor(project, "doctor.health", {});
-			expect(existsSync(pwned)).toBe(false);
-			expect(rustVersion(result)).not.toBe("cargo 9.9.9 (fake)");
-		},
-		20_000,
-	);
+		const result = await dispatchDoctor(project, "doctor.health", {});
+		expect(existsSync(pwned)).toBe(false);
+		expect(rustVersion(result)).not.toBe("cargo 9.9.9 (fake)");
+	}, 20_000);
 });

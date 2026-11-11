@@ -16,14 +16,6 @@ import {
 	runReamCli,
 	sanitizeSpawnError,
 } from "../../src/util/cli-runner.js";
-import { canExecInTmp } from "../test-utils.js";
-
-// Skip the whole suite on hardened CIs that mount /tmp with `noexec`.
-// Every test here writes a Node stub under tmpdir() and spawns it,
-// which surfaces as EPERM on those hosts even though the code under
-// test is fine. The probe runs once per process and logs a stderr
-// note explaining the skip.
-const describeIfTmpExec = canExecInTmp() ? describe : describe.skip;
 
 let tmpRoot: string;
 let prevBin: string | undefined;
@@ -53,7 +45,7 @@ function writeStub(name: string, body: string): string {
 	return path;
 }
 
-describeIfTmpExec("resolveReamBin", () => {
+describe("resolveReamBin", () => {
 	it("prefers REAM_BIN env override", () => {
 		const stub = writeStub("ream", "process.exit(0);");
 		process.env.REAM_BIN = stub;
@@ -84,7 +76,7 @@ describeIfTmpExec("resolveReamBin", () => {
 	});
 });
 
-describeIfTmpExec("runReamCli", () => {
+describe("runReamCli", () => {
 	it("rejects when REAM_MCP_NO_SHELL=1", async () => {
 		process.env.REAM_MCP_NO_SHELL = "1";
 		const stub = writeStub("ream", "process.exit(0);");

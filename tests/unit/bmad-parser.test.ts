@@ -123,23 +123,18 @@ describe("parseEpicsFile", () => {
 		);
 	});
 
-	it("parses the live epics.md without errors", async () => {
-		const { readFileSync, existsSync } = await import("node:fs");
-		const { findReamRepoRoot } = await import("../test-utils.js");
-		const root = findReamRepoRoot();
-		if (root === null) return; // gracefully skip when run outside repo
-		const path = `${root}/_bmad-output/planning-artifacts/epics.md`;
-		if (!existsSync(path)) return;
-		const text = readFileSync(path, "utf8");
+	it("parses the committed fixture's epics.md without warnings", async () => {
+		const { readFileSync } = await import("node:fs");
+		const { join } = await import("node:path");
+		const { BMAD_FIXTURE_ROOT } = await import("../test-utils.js");
+		const text = readFileSync(
+			join(BMAD_FIXTURE_ROOT, "_bmad-output", "planning-artifacts", "epics.md"),
+			"utf8",
+		);
 		const r = parseEpicsFile(text);
-		// Live file should have at least 30 epics and zero
-		// hard-stop warnings (warnings allowed but not catastrophic).
-		expect(r.epics.length).toBeGreaterThan(30);
-		// Story 33.8 must appear with the right title.
-		const epic33 = r.epics.find((e) => e.id === "33");
-		expect(epic33).toBeDefined();
-		const story = epic33?.stories.find((s) => s.id === "33.8");
-		expect(story).toBeDefined();
-		expect(story?.title).toContain("BMAD");
+		expect(r.parserWarnings).toEqual([]);
+		expect(r.epics.map((e) => e.id)).toEqual(["33", "34", "35"]);
+		const story = r.epics[0]?.stories.find((s) => s.id === "33.8");
+		expect(story?.title).toBe("BMAD tools for the agent");
 	});
 });

@@ -15,11 +15,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BIN_TS = join(HERE, "..", "..", "src", "index.ts");
 
-// Spawning + reliably killing the stdio server subprocess tree is unreliable on
-// Windows runners (the node child's handles don't fully release, hanging vitest).
-// The server's logic is covered by the per-tool dispatch tests, and the stdio
-// transport runs on Linux + macOS; skip these process-lifecycle tests on win32.
-const describeServer = process.platform === "win32" ? describe.skip : describe;
+// POSIX only (`*.posix.test.ts`, excluded by the Windows CI leg): spawning and
+// reliably killing the stdio server subprocess tree is unreliable on Windows
+// runners (the node child's handles don't fully release, hanging vitest). The
+// server's logic is covered by the per-tool dispatch tests there.
 
 interface JsonRpcResponse {
 	jsonrpc: "2.0";
@@ -96,10 +95,6 @@ function client(): StdioRpc {
 }
 
 beforeEach(async () => {
-	// Belt-and-suspenders with `describeServer`: never spawn the server child on
-	// win32, where a successfully-booted child isn't reliably reaped and keeps
-	// vitest's process alive (open-handle hang at exit).
-	if (process.platform === "win32") return;
 	const spawned = spawnServer();
 	child = spawned.child;
 	rpc = spawned.rpc;
@@ -121,7 +116,7 @@ afterEach(async () => {
 	rpc = undefined;
 });
 
-describeServer("ream-mcp > stdio > initialize", () => {
+describe("ream-mcp > stdio > initialize", () => {
 	it("responds with serverInfo + tools capability", async () => {
 		const res = await client().send({
 			jsonrpc: "2.0",
@@ -146,7 +141,7 @@ describeServer("ream-mcp > stdio > initialize", () => {
 	});
 });
 
-describeServer("ream-mcp > stdio > tools/list", () => {
+describe("ream-mcp > stdio > tools/list", () => {
 	it("returns the 5 docs.* + 6 introspect.* + 6 generate.* + 3 quality.* + 3 migration.* + 1 security.* + 7 bmad.* + 2 doctor.* + 2 inker.* + 1 station.* + 1 scheduler.* tools", async () => {
 		await client().send({
 			jsonrpc: "2.0",
@@ -222,7 +217,7 @@ describeServer("ream-mcp > stdio > tools/list", () => {
 	});
 });
 
-describeServer("ream-mcp > stdio > unknown method", () => {
+describe("ream-mcp > stdio > unknown method", () => {
 	it("returns JSON-RPC error -32601 (Method not found)", async () => {
 		await client().send({
 			jsonrpc: "2.0",
@@ -249,7 +244,7 @@ describeServer("ream-mcp > stdio > unknown method", () => {
 	});
 });
 
-describeServer("ream-mcp > stdio > SIGTERM shutdown", () => {
+describe("ream-mcp > stdio > SIGTERM shutdown", () => {
 	it("exits within 500ms of SIGTERM", async () => {
 		if (!child) throw new Error("child process was not spawned");
 		// Round-trip a JSON-RPC `initialize` first so we know the

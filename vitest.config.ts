@@ -12,10 +12,9 @@ export default defineConfig({
 			include: ["src/**"],
 			exclude: ["src/**/*.d.ts"],
 			reporter: ["text-summary", "json-summary"],
-			// Set from what CI reaches, not what a workspace checkout does:
-			// the `bmad.*` suites need a _bmad-output fixture and skip in a
-			// standalone repository — which is where this gate runs. Locally
-			// the same suite covers ~2 points more.
+			// Set from what CI reaches on the host job, where every suite runs:
+			// nothing skips (the CI gate fails a skipped test), and the
+			// POSIX-only `*.posix.test.ts` files are excluded on Windows alone.
 			thresholds: {
 				lines: 76,
 				statements: 73,

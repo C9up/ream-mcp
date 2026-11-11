@@ -21,12 +21,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchGenerate } from "../../src/tools/generate.js";
-import { canExecInTmp } from "../test-utils.js";
-
-// Skip when the system tmpdir refuses exec (noexec mount on hardened
-// CIs). The suite writes a Node stub under tmpdir() and spawns it via
-// REAM_BIN; without exec permission the spawn surfaces as EPERM.
-const describeIfTmpExec = canExecInTmp() ? describe : describe.skip;
 
 let tmpRoot: string;
 let prevBin: string | undefined;
@@ -101,7 +95,7 @@ if (dryRun) {
 	return path;
 }
 
-describeIfTmpExec("generate.controller — confirm: true writes files", () => {
+describe("generate.controller — confirm: true writes files", () => {
 	it("creates the file on disk", async () => {
 		const res = (await dispatchGenerate(tmpRoot, "generate.controller", {
 			module: "orders",
