@@ -14,9 +14,11 @@
 //!
 //! ## Stable id
 //!
-//! `chunk_id(file_hash, heading_path)` = `{sha256(file_bytes)[..8]}:
-//! {slug(heading_path)}`. Identical inputs always produce identical
-//! ids → idempotent rebuilds.
+//! `chunk_id(file_hash, heading_path)` = `{sha256(path, file_bytes)[..32]}:
+//! {slug(heading_path)}`: 128 bits of the digest, so two corpus files that
+//! share a heading (`## Usage`) cannot be made to collide on the id by
+//! searching for a short prefix match. Identical inputs always produce
+//! identical ids → idempotent rebuilds.
 
 use std::collections::HashMap;
 
@@ -61,11 +63,15 @@ pub struct Chunk {
     pub line_end: u32,
 }
 
-/// SHA-256 of `bytes`, hex-encoded, truncated to 8 chars.
+/// Bytes of the SHA-256 kept in a chunk id prefix: 128 bits. A 32-bit
+/// prefix was found by a birthday search over ~30k candidate pages.
+const ID_HASH_BYTES: usize = 16;
+
+/// SHA-256 of `bytes`, hex-encoded, truncated to 128 bits (32 chars).
 pub fn file_hash(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    let mut hex = String::with_capacity(8);
-    for byte in digest.iter().take(4) {
+    let mut hex = String::with_capacity(ID_HASH_BYTES * 2);
+    for byte in digest.iter().take(ID_HASH_BYTES) {
         hex.push_str(&format!("{byte:02x}"));
     }
     hex
@@ -430,10 +436,33 @@ mod tests {
     }
 
     #[test]
-    fn file_hash_is_8_hex_chars() {
+    fn file_hash_keeps_128_bits() {
         let h = file_hash(b"hello");
-        assert_eq!(h.len(), 8);
+        assert_eq!(h.len(), 32);
         assert!(h.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(h, "2cf24dba5fb0a30e26e83b2ac5b9e29e");
+    }
+
+    #[test]
+    fn a_32_bit_prefix_match_no_longer_collides() {
+        // `docs/a.md` and `docs/b.md` share their first four digest bytes
+        // (found by a birthday search) and their only heading; with a 32-bit
+        // prefix both produced the same `chunks.id`.
+        let a = chunk_markdown_file(
+            "docs/a.md",
+            b"## Usage\n\nRun it. 47476\n",
+            ChunkKind::Markdown,
+        );
+        let b = chunk_markdown_file(
+            "docs/b.md",
+            b"## Usage\n\nRun it again. 30253\n",
+            ChunkKind::Markdown,
+        );
+        let (Some(a), Some(b)) = (a.first(), b.first()) else {
+            panic!("expected one chunk each");
+        };
+        assert_eq!(a.id[..8], b.id[..8], "fixture no longer collides");
+        assert_ne!(a.id, b.id);
     }
 
     #[test]

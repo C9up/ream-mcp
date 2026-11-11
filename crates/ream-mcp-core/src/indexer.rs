@@ -36,6 +36,9 @@ pub struct IndexStats {
     pub files_indexed: u32,
     pub files_unchanged: u32,
     pub files_skipped: u32,
+    /// Files whose chunks could not be stored (an id already held by another
+    /// file); each is reported on stderr and the run goes on.
+    pub files_failed: u32,
     pub chunks_total: u32,
     pub elapsed_ms: u64,
 }
@@ -106,14 +109,25 @@ pub fn index(store: &mut Store, cfg: &IndexConfig) -> Result<IndexStats, StoreEr
         }
         let embeddings = embed_chunks(&chunks);
         let pkg = package.as_deref();
-        store.upsert_chunks(
+        let stored = store.upsert_chunks(
             &rel,
             pkg,
             &chunks,
             embeddings.as_deref(),
             mtime_ms,
             &content_hash,
-        )?;
+        );
+        // The upsert is one transaction per file: a constraint failure rolls
+        // back that file alone. Skipping it keeps every other file indexed,
+        // where aborting left the whole index failing on every later run.
+        if let Err(err) = stored {
+            if !is_constraint_violation(&err) {
+                return Err(err);
+            }
+            eprintln!("[ream-mcp] index: skipped {rel}: {err}");
+            stats.files_failed += 1;
+            continue;
+        }
         stats.files_indexed += 1;
         stats.chunks_total += chunks.len() as u32;
     }
@@ -122,6 +136,14 @@ pub fn index(store: &mut Store, cfg: &IndexConfig) -> Result<IndexStats, StoreEr
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     Ok(stats)
+}
+
+fn is_constraint_violation(err: &StoreError) -> bool {
+    matches!(
+        err,
+        StoreError::Sqlite(rusqlite::Error::SqliteFailure(e, _))
+            if e.code == rusqlite::ErrorCode::ConstraintViolation
+    )
 }
 
 fn embed_chunks(chunks: &[Chunk]) -> Option<Vec<Embedding>> {
@@ -407,6 +429,32 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {}", hit.id));
             assert_eq!(got.file, hit.file);
         }
+    }
+
+    #[test]
+    fn a_chunk_id_collision_skips_that_file_and_indexes_the_rest() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        fs::create_dir_all(root.join("docs")).expect("mkdir");
+        let b = b"## Usage\n\nRun it again.\n";
+        fs::write(root.join("docs/b.md"), b).expect("write");
+        fs::write(root.join("docs/c.md"), "## Usage\n\nOther page.\n").expect("write");
+        let mut store = Store::open_in_memory().unwrap_or_else(|e| panic!("open: {e}"));
+        // Another corpus file already holds the id docs/b.md produces: what a
+        // prefix collision between two pages sharing a heading amounts to.
+        let stolen = chunk_markdown_file("docs/b.md", b, ChunkKind::Markdown);
+        store
+            .upsert_chunks("docs/ghost.md", None, &stolen, None, 1, "h")
+            .unwrap_or_else(|e| panic!("seed: {e}"));
+        let cfg = IndexConfig {
+            root: root.to_path_buf(),
+            full_rebuild: false,
+        };
+        for _ in 0..2 {
+            let stats = index(&mut store, &cfg).unwrap_or_else(|e| panic!("index: {e}"));
+            assert_eq!(stats.files_failed, 1);
+        }
+        assert_eq!(tracked(&store), vec!["docs/c.md", "docs/ghost.md"]);
     }
 
     #[test]
