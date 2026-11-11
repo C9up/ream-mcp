@@ -17,6 +17,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import type { AsyncDatabaseConnection, MigrationRunner } from "@c9up/atlas";
+
 import {
 	Node,
 	type ObjectLiteralExpression,
@@ -36,12 +38,10 @@ export interface BridgeOptions {
 }
 
 export interface BridgeResult {
-	// `runner` and `connection` are typed as `unknown` here so this
-	// file imports zero `@c9up/atlas` symbols at module-evaluation
-	// time. The dispatcher narrows them via the dynamic-import
-	// types in `migration.ts`.
-	runner: unknown;
-	connection: { close(): Promise<void> };
+	// Type-only imports: erased at compile time, so this file still loads
+	// no `@c9up/atlas` code until `buildAtlasBridge` imports it.
+	runner: MigrationRunner;
+	connection: AsyncDatabaseConnection;
 	migrationsDir: string;
 	migrationsDirExists: boolean;
 	dialect: Dialect;
@@ -72,10 +72,7 @@ export interface BridgeError {
 export function isBridgeError(
 	value: BridgeResult | BridgeError,
 ): value is BridgeError {
-	return (
-		typeof (value as BridgeError).error === "string" &&
-		typeof (value as BridgeError).hint === "string"
-	);
+	return "error" in value && typeof value.error === "string";
 }
 
 /**
@@ -330,7 +327,7 @@ export async function buildAtlasBridge(
 
 	// The type atlas actually returns, rather than a hand-written
 	// `DatabaseAdapter & { close() }` that then needed a double cast to fit.
-	let connection: import("@c9up/atlas").AsyncDatabaseConnection;
+	let connection: AsyncDatabaseConnection;
 	try {
 		connection = await atlas.createNapiConnection(url);
 	} catch (err) {

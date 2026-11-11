@@ -21,6 +21,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
 
 import { isInside, safeRealpath } from "./containment.js";
+import { isRecord } from "./guards.js";
 
 export interface WorkspacePackage {
 	name: string;
@@ -116,17 +117,14 @@ interface ReadResult {
 
 function readPackage(dir: string, realRoot: string): ReadResult | null {
 	const pkgJsonPath = join(dir, "package.json");
-	let raw: {
-		name?: unknown;
-		main?: unknown;
-		exports?: unknown;
-		workspaces?: unknown;
-	};
+	let parsed: unknown;
 	try {
-		raw = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as typeof raw;
+		parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
 	} catch {
 		return null;
 	}
+	if (!isRecord(parsed)) return null;
+	const raw = parsed;
 	if (typeof raw.name !== "string" || raw.name.length === 0) return null;
 	const mainEntry = resolveMainEntry(dir, raw, realRoot);
 	if (!mainEntry) return null;
@@ -156,14 +154,13 @@ function resolveMainEntry(
 	const exp = pkg.exports;
 	if (typeof exp === "string") {
 		pushIfSafe(candidates, dir, exp);
-	} else if (exp && typeof exp === "object" && !Array.isArray(exp)) {
-		const root = (exp as Record<string, unknown>)["."];
+	} else if (isRecord(exp)) {
+		const root = exp["."];
 		if (typeof root === "string") {
 			pushIfSafe(candidates, dir, root);
-		} else if (root && typeof root === "object" && !Array.isArray(root)) {
-			const cond = root as Record<string, unknown>;
+		} else if (isRecord(root)) {
 			for (const key of ["import", "default", "types", "require"]) {
-				const v = cond[key];
+				const v = root[key];
 				if (typeof v === "string") pushIfSafe(candidates, dir, v);
 			}
 		}

@@ -141,10 +141,8 @@ async function runScan(
 	const knownGaps: string[] = [];
 	const files = collectFiles(root, knownGaps);
 	if (files.length === 0) {
-		return wrap({ findings: [] as Finding[] }, [
-			"no source files found",
-			...knownGaps,
-		]);
+		const findings: Finding[] = [];
+		return wrap({ findings }, ["no source files found", ...knownGaps]);
 	}
 
 	const entryFile = resolveEntryFile((rel) => existsSync(join(root, rel)));
@@ -276,17 +274,17 @@ function parseChecks(
 		};
 	}
 	if (raw.length === 0) return { checks: [...SECURITY_CHECK_IDS] };
-	const valid = new Set<string>(SECURITY_CHECK_IDS);
 	const seen = new Set<SecurityCheckId>();
 	for (const item of raw) {
-		if (typeof item !== "string" || !valid.has(item)) {
+		const id = SECURITY_CHECK_IDS.find((known) => known === item);
+		if (id === undefined) {
 			const display = typeof item === "string" ? item : JSON.stringify(item);
 			return {
 				error: `unknown check: ${display}`,
 				hint: `valid checks: ${[...SECURITY_CHECK_IDS].join(", ")}`,
 			};
 		}
-		seen.add(item as SecurityCheckId);
+		seen.add(id);
 	}
 	return { checks: [...seen] };
 }

@@ -25,12 +25,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
-import type {
-	DatabaseAdapter,
-	Migration,
-	MigrationRecord,
-	MigrationRunner,
-} from "@c9up/atlas";
+import type { DatabaseAdapter, MigrationRecord } from "@c9up/atlas";
 
 import {
 	type BridgeResult,
@@ -45,6 +40,7 @@ import {
 	checkConsent,
 	classifyTarget,
 } from "../util/env-guard.js";
+import { isRecord } from "../util/guards.js";
 
 export {
 	isMigrationTool,
@@ -115,8 +111,8 @@ async function runStatus(root: string): Promise<unknown> {
 		await safeClose(bridge);
 		return wrap(
 			{
-				applied: [] as Array<{ id: string; name: string; ranAt: string }>,
-				pending: [] as Array<{ id: string; name: string; file: string }>,
+				applied: [],
+				pending: [],
 				currentBatch: 0,
 			},
 			[`migrations directory not found at ${relDir}`],
@@ -130,17 +126,14 @@ async function runStatus(root: string): Promise<unknown> {
 	}
 
 	try {
-		const runner = bridge.runner as MigrationRunner;
+		const runner = bridge.runner;
 		// No `runner.init()`: it creates the tracking table, and a status read
 		// is no consent to a schema change on whatever database the URL names.
 		// The runner's `status()` is read-only and reports every migration as
 		// pending when the table is absent.
 		const statuses = await runner.status();
 		if (
-			!(await trackingTableExists(
-				bridge.connection as DatabaseAdapter,
-				bridge.migrationsTable,
-			))
+			!(await trackingTableExists(bridge.connection, bridge.migrationsTable))
 		) {
 			knownGaps.push(
 				`migrations tracking table \`${bridge.migrationsTable}\` not initialised: nothing has been migrated yet`,
@@ -152,10 +145,7 @@ async function runStatus(root: string): Promise<unknown> {
 			.filter((s) => s.status === "applied")
 			.map((s) => s.name);
 		const records = appliedNames.length
-			? await readAppliedRecords(
-					bridge.connection as DatabaseAdapter,
-					bridge.migrationsTable,
-				)
+			? await readAppliedRecords(bridge.connection, bridge.migrationsTable)
 			: new Map<string, string>();
 
 		for (const s of statuses) {
@@ -268,7 +258,7 @@ async function runMigrate(
 	}
 
 	try {
-		const runner = bridge.runner as MigrationRunner;
+		const runner = bridge.runner;
 		if (inputs.dryRun) {
 			const plan = await runner.dryRun();
 			const wouldRun = plan.map((m) => {
@@ -343,7 +333,7 @@ async function runRollback(
 	}
 
 	try {
-		const runner = bridge.runner as MigrationRunner;
+		const runner = bridge.runner;
 		await runner.init();
 
 		if (inputs.dryRun) {
@@ -353,7 +343,7 @@ async function runRollback(
 
 		const rolledBack: Array<{ id: string; name: string; batch: number }> = [];
 		for (let i = 0; i < step; i++) {
-			const adapter = bridge.connection as DatabaseAdapter;
+			const adapter = bridge.connection;
 			const before = await currentBatch(adapter, bridge.migrationsTable);
 			if (before === 0) break;
 			// The gate already refused production unless the user allowed it
@@ -378,7 +368,7 @@ async function previewRollback(
 	bridge: BridgeResult,
 	step: number,
 ): Promise<Array<{ id: string; name: string; sql: string; batch: number }>> {
-	const adapter = bridge.connection as DatabaseAdapter;
+	const adapter = bridge.connection;
 	const max = await currentBatch(adapter, bridge.migrationsTable);
 	if (max === 0) return [];
 	const targetBatches = [];
@@ -426,15 +416,20 @@ async function loadDownSql(
 	// `pathToFileURL` produces a valid `file://` URL on every
 	// platform — required for dynamic-import on Windows and
 	// safer than ad-hoc string concatenation.
-	const mod = (await import(pathToFileURL(fileAbs).href)) as {
-		default?: new (dialect?: string) => Migration;
-	};
-	const MigrationClass = mod.default;
-	if (!MigrationClass) return "";
+	// The module is project code: its shape is checked, not assumed.
+	const mod: unknown = await import(pathToFileURL(fileAbs).href);
+	const MigrationClass = isRecord(mod) ? mod.default : undefined;
+	if (typeof MigrationClass !== "function") return "";
 	// Pass the bridge's dialect so the compiled SQL matches what
 	// `MigrationRunner` would have emitted on the apply path.
-	const instance = new MigrationClass(dialect);
-	const stmts = await instance.getDownSQL();
+	const instance: unknown = Reflect.construct(MigrationClass, [dialect]);
+	if (!isRecord(instance) || typeof instance.getDownSQL !== "function") {
+		throw new Error(`${name}: the default export is not a migration class`);
+	}
+	const stmts: unknown = await instance.getDownSQL();
+	if (!Array.isArray(stmts) || !stmts.every((s) => typeof s === "string")) {
+		throw new Error(`${name}: getDownSQL() did not return a list of strings`);
+	}
 	return stmts.join(";\n") + (stmts.length > 0 ? ";" : "");
 }
 

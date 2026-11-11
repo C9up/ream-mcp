@@ -16,21 +16,13 @@
  */
 
 import { core } from "../../index.js";
+import { describeIndexStats, parseIndexStats } from "../util/index-stats.js";
 import {
 	describeDownload,
 	downloadModel,
 	parseModelManifest,
 } from "../util/model-download.js";
 import { detectProjectRoot } from "../util/project-root.js";
-
-interface IndexStats {
-	files_seen: number;
-	files_indexed: number;
-	files_unchanged: number;
-	files_skipped: number;
-	chunks_total: number;
-	elapsed_ms: number;
-}
 
 async function fetchModel(): Promise<number> {
 	try {
@@ -68,10 +60,8 @@ async function main(): Promise<number> {
 	);
 	try {
 		const json = await core.indexCorpus(root, full);
-		const stats = JSON.parse(json) as IndexStats;
-		process.stderr.write(
-			`[ream-mcp] done: ${stats.files_indexed} indexed, ${stats.files_unchanged} unchanged, ${stats.files_skipped} skipped, ${stats.chunks_total} chunks in ${stats.elapsed_ms}ms\n`,
-		);
+		const stats = parseIndexStats(json);
+		process.stderr.write(`[ream-mcp] done: ${describeIndexStats(stats)}\n`);
 		return 0;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);

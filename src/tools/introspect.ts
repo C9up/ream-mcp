@@ -242,8 +242,8 @@ function findEnclosingGroupContext(node: Node): GroupContext {
 	// is the outermost group (deepest parent in the walk). Outer
 	// prefix prepends to inner, outer middleware prepends to inner.
 	let merged = emptyCtx();
-	for (let i = chain.length - 1; i >= 0; i--) {
-		const groupCtx = readGroupChain(chain[i] as Node);
+	for (const group of [...chain].reverse()) {
+		const groupCtx = readGroupChain(group);
 		merged = {
 			prefix: merged.prefix + groupCtx.prefix,
 			middleware: [...merged.middleware, ...groupCtx.middleware],
@@ -342,12 +342,10 @@ function buildEntityRow(
 	if (typeof tableLit === "string") {
 		// `@Entity('users')` — bare string literal arg.
 		table = tableLit;
-	} else if (
-		isPlainRecord(tableLit as JsonLikeValue) &&
-		typeof (tableLit as { table?: unknown }).table === "string"
-	) {
+	} else if (tableLit !== null && isPlainRecord(tableLit)) {
 		// `@Entity({ table: 'users' })` — common config-object shape.
-		table = (tableLit as { table: string }).table;
+		const named = tableLit.table;
+		if (typeof named === "string") table = named;
 	}
 
 	const columns: EntityRow["columns"] = [];
@@ -879,8 +877,7 @@ function getConfig(
 
 	const segments = key.split(".");
 	let cur: JsonLikeValue = tree;
-	for (let i = 0; i < segments.length; i++) {
-		const seg = segments[i] as string;
+	for (const [i, seg] of segments.entries()) {
 		if (isUnevaluated(cur)) {
 			return shapeError("cannot descend into unevaluated node", cur.expression);
 		}
@@ -890,8 +887,12 @@ function getConfig(
 				`value is ${Array.isArray(cur) ? "array" : typeof cur}`,
 			);
 		}
-		if (seg in cur) {
-			cur = cur[seg] as JsonLikeValue;
+		// Own keys only: `constructor` or `__proto__` are not config keys.
+		const next: JsonLikeValue | undefined = Object.hasOwn(cur, seg)
+			? cur[seg]
+			: undefined;
+		if (next !== undefined) {
+			cur = next;
 			continue;
 		}
 		const available = Object.keys(cur).sort().join(", ");
@@ -919,8 +920,8 @@ function collectGaps(
 		return;
 	}
 	if (Array.isArray(value)) {
-		for (let i = 0; i < value.length; i++) {
-			collectGaps(value[i] as JsonLikeValue, [...path, String(i)], gaps);
+		for (const [i, item] of value.entries()) {
+			collectGaps(item, [...path, String(i)], gaps);
 		}
 		return;
 	}

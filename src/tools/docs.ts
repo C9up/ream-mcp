@@ -79,10 +79,11 @@ function handleSearch(root: string, args: Record<string, unknown>) {
 function handleGet(root: string, args: Record<string, unknown>) {
 	const id = typeof args.id === "string" ? args.id : null;
 	const topic = typeof args.topic === "string" ? args.topic : null;
-	if (!id && !topic) {
+	const key = id || topic;
+	if (!key) {
 		throw new Error("docs.get: provide either `id` or `topic`.");
 	}
-	const json = core.getChunk(root, (id ?? topic) as string, id == null);
+	const json = core.getChunk(root, key, !id);
 	if (json == null) return null;
 	return JSON.parse(json);
 }
@@ -119,7 +120,7 @@ async function handleExplain(root: string, args: Record<string, unknown>) {
 	await indexReady;
 	const opts = { type: "Code" };
 	const json = core.search(root, query, JSON.stringify(opts));
-	const result = JSON.parse(json) as { hits: unknown[] };
+	const result: unknown = JSON.parse(json);
 	return result;
 }
 

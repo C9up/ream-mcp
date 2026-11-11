@@ -19,16 +19,8 @@
  */
 
 import { core } from "../../index.js";
+import { describeIndexStats, parseIndexStats } from "./index-stats.js";
 import { detectProjectRoot } from "./project-root.js";
-
-interface IndexStats {
-	files_seen: number;
-	files_indexed: number;
-	files_unchanged: number;
-	files_skipped: number;
-	chunks_total: number;
-	elapsed_ms: number;
-}
 
 /**
  * Resolves when the startup reindex finishes (or was skipped because
@@ -70,10 +62,8 @@ async function runStartupReindex(): Promise<void> {
 	}
 	try {
 		const json = await core.indexCorpus(root, false);
-		const stats = JSON.parse(json) as IndexStats;
-		process.stderr.write(
-			`[ream-mcp] reindex: ${stats.files_indexed} indexed, ${stats.files_unchanged} unchanged, ${stats.files_skipped} skipped, ${stats.chunks_total} chunks total in ${stats.elapsed_ms}ms\n`,
-		);
+		const stats = parseIndexStats(json);
+		process.stderr.write(`[ream-mcp] reindex: ${describeIndexStats(stats)}\n`);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		process.stderr.write(`[ream-mcp] reindex failed: ${msg}\n`);

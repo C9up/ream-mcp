@@ -17,7 +17,6 @@ import type { SourceFile } from "ts-morph";
 import {
 	buildDepGraph,
 	type DepGraph,
-	type DepScope,
 	readCoverageSummary,
 	toDot,
 } from "../util/dep-graph-builder.js";
@@ -373,12 +372,7 @@ function runDepGraph(
 	}
 
 	const packages = walkWorkspacePackages(root);
-	const graph = buildDepGraph(
-		loaded.project,
-		root,
-		scope as DepScope,
-		packages,
-	);
+	const graph = buildDepGraph(loaded.project, root, scope, packages);
 
 	if (format === "dot") {
 		return wrap(loaded, root, {

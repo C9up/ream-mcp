@@ -18,6 +18,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
+import { isRecord } from "./guards.js";
 
 export type ProjectRootSource =
 	| "env"
@@ -77,17 +78,17 @@ function tryReadJson(p: string): Record<string, unknown> | null {
 	// older two-step (statSync → readFileSync) doubled the syscall
 	// cost across the walk for no correctness gain.
 	try {
-		return JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
+		const parsed: unknown = JSON.parse(readFileSync(p, "utf8"));
+		return isRecord(parsed) ? parsed : null;
 	} catch {
 		return null;
 	}
 }
 
 function hasReamDep(pkg: Record<string, unknown>): boolean {
-	const deps = (pkg.dependencies as Record<string, unknown> | undefined) ?? {};
-	const dev =
-		(pkg.devDependencies as Record<string, unknown> | undefined) ?? {};
-	const peer =
-		(pkg.peerDependencies as Record<string, unknown> | undefined) ?? {};
-	return "@c9up/ream" in deps || "@c9up/ream" in dev || "@c9up/ream" in peer;
+	// A dependency field that is not an object (a string, an array, null) is
+	// a malformed package.json, not a Ream one; `in` on a string would throw.
+	return [pkg.dependencies, pkg.devDependencies, pkg.peerDependencies].some(
+		(deps) => isRecord(deps) && "@c9up/ream" in deps,
+	);
 }

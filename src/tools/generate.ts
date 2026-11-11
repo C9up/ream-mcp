@@ -80,9 +80,10 @@ interface ErrorResponse extends Wrapped {
 
 export type GenerateResponse = DryRunResponse | WriteResponse | ErrorResponse;
 
+/** The tool arguments, once `parseArgs` has checked every field. */
 interface GenerateArgs {
-	module?: string;
-	name?: string;
+	module: string;
+	name: string;
 	dryRun?: boolean;
 	confirm?: boolean;
 	force?: boolean;
@@ -114,10 +115,8 @@ export async function dispatchGenerate(
 		return shapeError(`Unknown generate tool: ${name}`, "");
 	}
 
-	const args = rawArgs as GenerateArgs;
-
-	const validation = validateArgs(name, args);
-	if (validation) return validation;
+	const args = parseArgs(name, rawArgs);
+	if ("error" in args) return args;
 
 	// Resolve dryRun semantics — STRICT consent rule:
 	//   - default → dryRun: true (preview only)
@@ -140,8 +139,8 @@ export async function dispatchGenerate(
 	const dryRun = !(args.confirm === true);
 	const force = args.force === true;
 
-	const className = args.name as string;
-	const moduleName = (args.module as string | undefined) ?? "";
+	const className = args.name;
+	const moduleName = args.module;
 
 	if (!dryRun && !force) {
 		const conflicts = preCheckConflicts(root, kind, moduleName, className);
@@ -230,47 +229,49 @@ export async function dispatchGenerate(
 	return shapeWritten(parsed, result);
 }
 
-function validateArgs(tool: string, args: GenerateArgs): ErrorResponse | null {
-	if (typeof args.name !== "string") {
+function parseArgs(
+	tool: string,
+	args: Record<string, unknown>,
+): ErrorResponse | GenerateArgs {
+	const name = args.name;
+	if (typeof name !== "string") {
 		return shapeError(
 			`missing required argument 'name' for ${tool}`,
 			"pass `{ name: '<PascalCase>' }`.",
 		);
 	}
-	if (!CLASS_NAME_RE.test(args.name)) {
+	if (!CLASS_NAME_RE.test(name)) {
 		return shapeError(
-			`invalid name '${args.name}'`,
+			`invalid name '${name}'`,
 			"name must match ^[A-Z][A-Za-z0-9]*$ (PascalCase, ASCII only).",
 		);
 	}
-	if (MODULE_REQUIRED.has(tool)) {
-		if (typeof args.module !== "string" || args.module.length === 0) {
-			return shapeError(
-				`missing required argument 'module' for ${tool}`,
-				"pass `{ module: '<kebab-case>' }`.",
-			);
-		}
-		if (!MODULE_RE.test(args.module)) {
-			return shapeError(
-				`invalid module '${args.module}'`,
-				"module must match ^[a-z][a-z0-9-]*$ (kebab-case, ASCII only).",
-			);
-		}
-	} else if (typeof args.module === "string" && args.module.length > 0) {
-		if (!MODULE_RE.test(args.module)) {
-			return shapeError(
-				`invalid module '${args.module}'`,
-				"module must match ^[a-z][a-z0-9-]*$ (kebab-case, ASCII only).",
-			);
-		}
+	const module = args.module ?? "";
+	if (typeof module !== "string") {
+		return shapeError("invalid module", "module must be a kebab-case string.");
 	}
+	if (MODULE_REQUIRED.has(tool) && module.length === 0) {
+		return shapeError(
+			`missing required argument 'module' for ${tool}`,
+			"pass `{ module: '<kebab-case>' }`.",
+		);
+	}
+	if (module.length > 0 && !MODULE_RE.test(module)) {
+		return shapeError(
+			`invalid module '${module}'`,
+			"module must match ^[a-z][a-z0-9-]*$ (kebab-case, ASCII only).",
+		);
+	}
+	const flags: Pick<GenerateArgs, "dryRun" | "confirm" | "force"> = {};
 	for (const flag of ["dryRun", "confirm", "force"] as const) {
 		const value = args[flag];
-		if (value !== undefined && value !== true && value !== false) {
+		if (value === undefined) continue;
+		if (typeof value !== "boolean") {
 			return shapeError(`invalid ${flag}`, `${flag} must be a boolean.`);
 		}
+		flags[flag] = value;
 	}
-	return null;
+	return { name, module, ...flags };
 }
 
 function buildCliArgs(

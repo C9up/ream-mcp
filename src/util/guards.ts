@@ -7,3 +7,12 @@
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/**
+ * `JSON.parse(text)` when it is an object, `null` when it is valid JSON of any
+ * other shape. Invalid JSON still throws, for callers that report it.
+ */
+export function parseJsonRecord(text: string): Record<string, unknown> | null {
+	const parsed: unknown = JSON.parse(text);
+	return isRecord(parsed) ? parsed : null;
+}

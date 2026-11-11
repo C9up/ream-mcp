@@ -23,6 +23,7 @@ import {
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, relative } from "node:path";
 
+import { isRecord, parseJsonRecord } from "../util/guards.js";
 import { walkWorkspacePackages } from "../util/package-walker.js";
 
 export {
@@ -222,14 +223,14 @@ function readNapiField(
 ): { name: string; script: string } | null {
 	const path = join(pkgDir, "package.json");
 	if (!existsSync(path)) return null;
-	let raw: { name?: unknown; napi?: unknown; scripts?: unknown };
+	let raw: Record<string, unknown> | null;
 	try {
-		raw = JSON.parse(readFileSync(path, "utf8")) as typeof raw;
+		raw = parseJsonRecord(readFileSync(path, "utf8"));
 	} catch {
 		return null;
 	}
-	if (!raw.napi || typeof raw.napi !== "object") return null;
-	const napi = raw.napi as { name?: unknown; binaryName?: unknown };
+	if (raw === null || !isRecord(raw.napi)) return null;
+	const napi = raw.napi;
 	const name =
 		typeof napi.binaryName === "string"
 			? napi.binaryName
@@ -237,10 +238,7 @@ function readNapiField(
 				? napi.name
 				: null;
 	if (!name) return null;
-	const scripts =
-		raw.scripts && typeof raw.scripts === "object"
-			? (raw.scripts as Record<string, unknown>)
-			: {};
+	const scripts = isRecord(raw.scripts) ? raw.scripts : {};
 	const script =
 		typeof scripts["build:napi"] === "string"
 			? "build:napi"
@@ -283,10 +281,11 @@ function checkWorkspaceClean(
 	}
 	let rootVersion: string | null = null;
 	try {
-		const raw = JSON.parse(readFileSync(rootPkg, "utf8")) as {
-			version?: unknown;
-			workspaces?: unknown;
-		};
+		const raw = parseJsonRecord(readFileSync(rootPkg, "utf8"));
+		if (raw === null) {
+			knownGaps.push("workspace root package.json is not an object");
+			return false;
+		}
 		if (typeof raw.version === "string") rootVersion = raw.version;
 	} catch {
 		knownGaps.push("workspace root package.json is unparseable");
@@ -297,11 +296,8 @@ function checkWorkspaceClean(
 	for (const pkg of packages) {
 		const path = join(pkg.dir, "package.json");
 		try {
-			const raw = JSON.parse(readFileSync(path, "utf8")) as {
-				version?: unknown;
-				private?: unknown;
-			};
-			if (raw.private === true) continue;
+			const raw = parseJsonRecord(readFileSync(path, "utf8"));
+			if (raw === null || raw.private === true) continue;
 			if (typeof raw.version !== "string") continue;
 			if (raw.version !== rootVersion) {
 				knownGaps.push(
@@ -322,9 +318,7 @@ function checkWorkspaceClean(
 async function runEnvCheck(root: string): Promise<unknown> {
 	const envVars = REQUIRED_ENV_VARS.map((entry) => ({
 		name: entry.name,
-		set:
-			typeof process.env[entry.name] === "string" &&
-			(process.env[entry.name] as string).length > 0,
+		set: (process.env[entry.name] ?? "").length > 0,
 		sensitive: entry.sensitive,
 		hint: entry.hint,
 	}));

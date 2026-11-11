@@ -19,6 +19,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve as pathResolve, relative } from "node:path";
 import type { Project, SourceFile } from "ts-morph";
 
+import { isRecord, parseJsonRecord } from "./guards.js";
 import type { WorkspacePackage } from "./package-walker.js";
 import { eachSourceFile } from "./ts-static-parser.js";
 
@@ -461,20 +462,15 @@ export function readCoverageSummary(pkgDir: string): CoverageBlock | null {
 	}
 	if (size > COVERAGE_MAX_BYTES) return null;
 	try {
-		const raw = JSON.parse(readFileSync(summaryPath, "utf8")) as {
-			total?: {
-				lines?: { pct?: number };
-				branches?: { pct?: number };
-				functions?: { pct?: number };
-				statements?: { pct?: number };
-			};
-		};
-		const t = raw.total;
-		if (!t) return null;
-		const lines = pickPct(t.lines?.pct);
-		const branches = pickPct(t.branches?.pct);
-		const functions = pickPct(t.functions?.pct);
-		const statements = pickPct(t.statements?.pct);
+		const raw = parseJsonRecord(readFileSync(summaryPath, "utf8"));
+		const t = raw?.total;
+		if (!isRecord(t)) return null;
+		const pct = (metric: unknown): number | null =>
+			isRecord(metric) ? pickPct(metric.pct) : null;
+		const lines = pct(t.lines);
+		const branches = pct(t.branches);
+		const functions = pct(t.functions);
+		const statements = pct(t.statements);
 		if (
 			lines === null ||
 			branches === null ||

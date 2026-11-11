@@ -28,6 +28,7 @@ import {
 	safeRealpath,
 } from "../util/containment.js";
 import { walkProjectFiles } from "../util/fs-walk.js";
+import { isRecord } from "../util/guards.js";
 import { redactPaths } from "../util/redact.js";
 import { INKER_TOOLS, isInkerTool } from "./inker.descriptors.js";
 
@@ -318,21 +319,18 @@ function displayPath(projectRoot: string, abs: string): string {
 	return relative(projectRoot, abs).replace(/\\/g, "/") || ".";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
-
-/** Pull `{ code, message, line?, column? }` off a thrown inker parse error. */
-function extractInkerError(err: unknown): {
+/** Pull `{ code, message, line?, column? }` off a thrown inker error. */
+function extractInkerError(
+	err: unknown,
+	fallbackCode = "E_INKER_PARSE_ERROR",
+): {
 	code: string;
 	message: string;
 	line?: number;
 	column?: number;
 } {
 	const code =
-		isRecord(err) && typeof err.code === "string"
-			? err.code
-			: "E_INKER_PARSE_ERROR";
+		isRecord(err) && typeof err.code === "string" ? err.code : fallbackCode;
 	const message =
 		isRecord(err) && typeof err.message === "string"
 			? err.message
@@ -357,10 +355,7 @@ async function renderTest(
 		);
 	}
 	const templateName = args.template;
-	const data =
-		args.data && typeof args.data === "object" && !Array.isArray(args.data)
-			? (args.data as Record<string, unknown>)
-			: {};
+	const data = isRecord(args.data) ? args.data : {};
 	const overrideRoot = typeof args.root === "string" ? args.root : undefined;
 	const templatesRoot = resolveTemplatesRoot(projectRoot, overrideRoot);
 	if (templatesRoot === null) {
@@ -430,25 +425,18 @@ async function renderTest(
 				// the response has gone back. The pending render task is
 				// still keeping the loop alive on its own; we don't want
 				// our deadline to ALSO keep it alive past resolution.
-				if (typeof t === "object" && t !== null && "unref" in t) {
-					(t as { unref: () => void }).unref();
-				}
+				t.unref();
 			}),
 		]);
 		return { html };
 	} catch (err) {
-		const e = err as {
-			code?: string;
-			message?: string;
-			context?: { line?: number; column?: number };
-		};
-		const rawMessage = typeof e.message === "string" ? e.message : String(err);
+		const e = extractInkerError(err, "E_INKER_UNKNOWN");
 		return {
 			error: {
-				code: typeof e.code === "string" ? e.code : "E_INKER_UNKNOWN",
-				message: redactPaths(rawMessage),
-				line: e.context?.line,
-				column: e.context?.column,
+				code: e.code,
+				message: redactPaths(e.message),
+				line: e.line,
+				column: e.column,
 			},
 			hint: "Helpers `t`, `csrfField`, `url`, `asset` are NOT wired by this tool — templates that depend on them will throw. Use this tool for templates that take data only.",
 		};

@@ -194,7 +194,7 @@ export function isLoadError(v: LoadedProject | LoadError): v is LoadError {
 		typeof v === "object" &&
 		v !== null &&
 		"error" in v &&
-		typeof (v as LoadError).error === "string"
+		typeof v.error === "string"
 	);
 }
 
@@ -468,20 +468,20 @@ export function isUnevaluated(v: JsonLikeValue): v is UnevaluatedExpression {
 		typeof v === "object" &&
 		v !== null &&
 		!Array.isArray(v) &&
-		(v as { unevaluated?: unknown }).unevaluated === true
+		"unevaluated" in v &&
+		v.unevaluated === true
 	);
 }
 
 export function isEnvRef(v: JsonLikeValue): v is EnvRef {
 	if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
 	if (isUnevaluated(v)) return false;
-	const obj = v as { env?: unknown; default?: unknown };
 	// An EnvRef has EXACTLY two keys: `env` (string) and `default`. A
 	// user config like `{ env: 'production', port: 3000 }` happens to
 	// contain `env` but isn't an env ref — the strict-shape check
 	// avoids false positives.
-	if (typeof obj.env !== "string") return false;
-	const keys = Object.keys(obj);
+	if (!("env" in v) || typeof v.env !== "string") return false;
+	const keys = Object.keys(v);
 	return keys.length === 2 && keys.includes("env") && keys.includes("default");
 }
 
@@ -601,7 +601,8 @@ export function findSymbol(
 	if (matches.length === 0) return null;
 	const production = matches.filter((m) => !TEST_PATH.test(m.file));
 	const candidates = production.length > 0 ? production : matches;
-	const head = candidates[0] as SymbolSite;
+	const head = candidates[0];
+	if (head === undefined) return null;
 	return candidates.length > 1 ? { ...head, ambiguous: true } : head;
 }
 
