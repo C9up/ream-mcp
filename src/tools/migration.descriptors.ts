@@ -26,20 +26,7 @@
  *    NOT measured per-statement. Treat as approximate.
  */
 
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
-
-import { DESTRUCTIVE, type ToolDescriptor } from "./descriptor.js";
-
-/**
- * The first call against a fresh database creates the tracking table, so the
- * status read is not read-only; it only ever adds that table.
- */
-const MIGRATION_STATUS: ToolAnnotations = {
-	readOnlyHint: false,
-	destructiveHint: false,
-	idempotentHint: true,
-	openWorldHint: false,
-};
+import { DESTRUCTIVE, READ_ONLY, type ToolDescriptor } from "./descriptor.js";
 
 const WRITE_GATE =
 	"`dryRun: false` also needs `confirm: true`, and is refused unless the user launched the server with `REAM_MCP_ALLOW_MIGRATIONS=1`. A target that is production — `REAM_ENV`/`NODE_ENV` is `production`, or the database URL is not provably local (a sqlite file inside the project, or a loopback / unix-socket server) — further needs `REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS=1` at launch. No tool argument can enable writes.";
@@ -50,9 +37,9 @@ const PREVIEW_RUNS_CODE =
 export const MIGRATION_TOOLS: ToolDescriptor[] = [
 	{
 		name: "migration.status",
-		annotations: MIGRATION_STATUS,
+		annotations: READ_ONLY,
 		description:
-			"Inspect Atlas migration state — returns `{ applied: [{ id, name, ranAt }], pending: [{ id, name, file }], currentBatch }` sorted by id ascending. On the very first call against a fresh database the `_migrations` tracking table is created (Atlas runner contract); subsequent calls are read-only.",
+			"Inspect Atlas migration state — returns `{ applied: [{ id, name, ranAt }], pending: [{ id, name, file }], currentBatch }` sorted by id ascending. Read-only: it never creates the tracking table; on a database that was never migrated every migration is pending and a knownGap says the table is not initialised.",
 		inputSchema: {
 			type: "object",
 			properties: {},

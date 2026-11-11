@@ -65,10 +65,6 @@ describe("tools/list annotations", () => {
 			expect(a?.readOnlyHint, name).toBe(false);
 			expect(a?.destructiveHint, name).toBe(true);
 		}
-		// Creates its tracking table on first call: not read-only, only additive.
-		const status = byName.get("migration.status")?.annotations;
-		expect(status?.readOnlyHint).toBe(false);
-		expect(status?.destructiveHint).toBe(false);
 	});
 
 	it("marks the inspection tools read-only", async () => {
@@ -83,6 +79,8 @@ describe("tools/list annotations", () => {
 			"bmad.trace",
 			"inker.list_templates",
 			"quality.dep_graph",
+			// Never creates the tracking table: a status read changes nothing.
+			"migration.status",
 		]) {
 			expect(byName.get(name)?.annotations?.readOnlyHint, name).toBe(true);
 		}

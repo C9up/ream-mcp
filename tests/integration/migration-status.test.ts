@@ -8,11 +8,11 @@
  * fresh-adapter-per-call lifecycle still observes prior writes.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchMigration } from "../../src/tools/migration.js";
@@ -78,6 +78,31 @@ describe("migration > status", () => {
 			defined(result.pending[0]).file.endsWith("1700000000_create_users.ts"),
 		).toBe(true);
 		expect(result.currentBatch).toBe(0);
+	});
+
+	it("creates nothing in the database it reads", async () => {
+		// A status read is not consent to a schema change: no tracking table
+		// (nor anything else) may appear in a database it was pointed at.
+		const result = (await dispatchMigration(
+			FIXTURE,
+			"migration.status",
+		)) as StatusShape;
+		expect(result.pending.length).toBe(2);
+		const file = join(tmpDbDir, "test.db");
+		if (existsSync(file)) {
+			const db = new DatabaseSync(file, { readOnly: true });
+			try {
+				const tables = db
+					.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+					.all();
+				expect(tables).toEqual([]);
+			} finally {
+				db.close();
+			}
+		}
+		expect(result.knownGaps).toContain(
+			"migrations tracking table `_migrations` not initialised: nothing has been migrated yet",
+		);
 	});
 
 	it("returns empty applied/pending and a knownGap when migrations dir is missing", async () => {

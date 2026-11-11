@@ -131,8 +131,21 @@ async function runStatus(root: string): Promise<unknown> {
 
 	try {
 		const runner = bridge.runner as MigrationRunner;
-		await runner.init();
+		// No `runner.init()`: it creates the tracking table, and a status read
+		// is no consent to a schema change on whatever database the URL names.
+		// The runner's `status()` is read-only and reports every migration as
+		// pending when the table is absent.
 		const statuses = await runner.status();
+		if (
+			!(await trackingTableExists(
+				bridge.connection as DatabaseAdapter,
+				bridge.migrationsTable,
+			))
+		) {
+			knownGaps.push(
+				`migrations tracking table \`${bridge.migrationsTable}\` not initialised: nothing has been migrated yet`,
+			);
+		}
 		const applied: Array<{ id: string; name: string; ranAt: string }> = [];
 		const pending: Array<{ id: string; name: string; file: string }> = [];
 		const appliedNames = statuses
@@ -176,6 +189,22 @@ async function runStatus(root: string): Promise<unknown> {
 		return shapeError("migration.status failed", detail);
 	} finally {
 		await safeClose(bridge);
+	}
+}
+
+/**
+ * Whether the tracking table exists, by a plain SELECT on it: dialect-agnostic
+ * and read-only. `migrationsTable` was checked to be a bare identifier.
+ */
+async function trackingTableExists(
+	adapter: DatabaseAdapter,
+	table: string,
+): Promise<boolean> {
+	try {
+		await adapter.query(`SELECT 1 FROM ${table} LIMIT 1`);
+		return true;
+	} catch {
+		return false;
 	}
 }
 
