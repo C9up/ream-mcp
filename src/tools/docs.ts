@@ -11,6 +11,7 @@
  */
 
 import { core } from "../../index.js";
+import { isRecord } from "../util/guards.js";
 import { indexReady } from "../util/startup-reindex.js";
 import {
 	findSymbol,
@@ -47,6 +48,8 @@ export async function dispatchDocs(
 	name: string,
 	args: Record<string, unknown> = {},
 ): Promise<unknown> {
+	// `docs.trace` reads the sources, not the index: it does not wait.
+	if (name === "docs.trace") return handleTrace(root, args);
 	await indexReady;
 	switch (name) {
 		case "docs.search":
@@ -55,8 +58,6 @@ export async function dispatchDocs(
 			return handleGet(root, args);
 		case "docs.explain":
 			return handleExplain(root, args);
-		case "docs.trace":
-			return handleTrace(root, args);
 		case "docs.audit_drift":
 			return handleAuditDrift(root);
 		default:
@@ -117,17 +118,47 @@ function handleExplain(root: string, args: Record<string, unknown>) {
 	return result;
 }
 
+function isImplSite(value: unknown): value is ImplSite {
+	return (
+		isRecord(value) &&
+		typeof value.file === "string" &&
+		typeof value.line === "number"
+	);
+}
+
+/** The native trace answer: `{ sites, truncated }`. */
+function parseTrace(json: string): { sites: ImplSite[]; truncated: boolean } {
+	const parsed: unknown = JSON.parse(json);
+	if (
+		!isRecord(parsed) ||
+		!Array.isArray(parsed.sites) ||
+		typeof parsed.truncated !== "boolean"
+	) {
+		throw new Error("docs.trace: unexpected answer from the native core.");
+	}
+	return {
+		sites: parsed.sites.filter(isImplSite),
+		truncated: parsed.truncated,
+	};
+}
+
+function isTestSite(site: ImplSite): boolean {
+	return site.file.startsWith("tests/") || site.file.includes("/tests/");
+}
+
 function handleTrace(root: string, args: Record<string, unknown>) {
 	const requirementId = requireString(args, "requirement_id");
-	const sitesJson = core.trace(root, requirementId);
-	const sites: ImplSite[] = JSON.parse(sitesJson);
-	const implementations = sites.filter((s) => !s.file.includes("/tests/"));
-	const tests = sites.filter((s) => s.file.includes("/tests/"));
+	const { sites, truncated } = parseTrace(core.trace(root, requirementId));
+	const implementations = sites.filter((s) => !isTestSite(s));
+	const tests = sites.filter(isTestSite);
 	return {
 		requirement: requirementId,
 		implementations,
 		tests,
 		gaps: implementations.length === 0 ? [requirementId] : [],
+		// The walk stopped at its file or byte budget: a gap may be a site
+		// that was never read.
+		truncated,
 	};
 }
 

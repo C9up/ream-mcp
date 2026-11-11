@@ -121,12 +121,17 @@ fn serde_chunk_json(c: &StoredChunk) -> Result<String, serde_json::Error> {
     serde_json::to_string(&v)
 }
 
-/// `@implements` lookup. Returns JSON `Vec<{ file, line }>`.
+/// `@implements` lookup. Returns JSON `{ sites: Vec<{ file, line }>,
+/// truncated }`; `truncated` is true when the walk stopped at its file or
+/// byte budget before reading every source root.
 #[napi(js_name = "trace")]
 pub fn trace_napi(root: String, requirement_id: String) -> napi::Result<String> {
     let idx = scan_dir(Path::new(&root));
-    let sites = idx.lookup(&requirement_id);
-    serde_json::to_string(&sites).map_err(|e| napi::Error::from_reason(format!("json: {e}")))
+    let out = serde_json::json!({
+        "sites": idx.lookup(&requirement_id),
+        "truncated": idx.truncated,
+    });
+    serde_json::to_string(&out).map_err(|e| napi::Error::from_reason(format!("json: {e}")))
 }
 
 /// Drift audit. Returns JSON `Vec<{ file, stored_mtime, current_mtime }>`.

@@ -78,7 +78,7 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 		name: "docs.trace",
 		annotations: READ_ONLY,
 		description:
-			"Walk `@implements` annotations across packages/**/*.ts and return implementations, tests, and gaps for a requirement id (FR / MISS- / Story / Epic).",
+			"Walk `@implements` annotations in the project's TypeScript sources (packages/<name>/src and tests; app/, start/, config/, database/, providers/, commands/, resources/, bin/, src/, tests/) and return implementations, tests, and gaps for a requirement id (FR / MISS- / Story / Epic). User-data directories (storage/, public/, tmp/...) are never read; files over 256 KB are skipped, and `truncated` is true when the walk hit its file or byte budget.",
 		inputSchema: {
 			type: "object",
 			properties: {

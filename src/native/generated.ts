@@ -36,7 +36,11 @@ export declare function getChunk(
 	byTopic: boolean,
 ): string | null;
 
-/** `@implements` lookup. Returns JSON `Vec<{ file, line }>`. */
+/**
+ * `@implements` lookup. Returns JSON `{ sites: Vec<{ file, line }>,
+ * truncated }`; `truncated` is true when the walk stopped at its file or
+ * byte budget before reading every source root.
+ */
 
 export declare function trace(root: string, requirementId: string): string;
 
