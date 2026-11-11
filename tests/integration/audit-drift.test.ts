@@ -42,7 +42,7 @@ afterEach(() => {
 
 describe("ream-mcp > integration > docs.audit_drift", () => {
 	it("flags a file whose mtime advanced after indexing", async () => {
-		core.indexCorpus(workDir, true);
+		await core.indexCorpus(workDir, true);
 		// Sleep long enough that the new mtime is strictly greater than
 		// the indexed one (1 ms granularity on most FS).
 		await new Promise((resolve) => setTimeout(resolve, 50));
@@ -58,15 +58,15 @@ describe("ream-mcp > integration > docs.audit_drift", () => {
 		).toBe(true);
 	});
 
-	it("returns an empty list when nothing has changed", () => {
-		core.indexCorpus(workDir, true);
+	it("returns an empty list when nothing has changed", async () => {
+		await core.indexCorpus(workDir, true);
 		const json = core.auditDrift(workDir);
 		const drifted = JSON.parse(json);
 		expect(drifted).toEqual([]);
 	});
 
-	it("flags deleted files via current_mtime sentinel", () => {
-		core.indexCorpus(workDir, true);
+	it("flags deleted files via current_mtime sentinel", async () => {
+		await core.indexCorpus(workDir, true);
 		rmSync(join(workDir, "packages", "demo", "README.md"));
 		const json = core.auditDrift(workDir);
 		const drifted = JSON.parse(json);

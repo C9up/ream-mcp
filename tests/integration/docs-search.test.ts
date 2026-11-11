@@ -78,8 +78,8 @@ afterEach(() => {
 });
 
 describe("ream-mcp > integration > docs.search", () => {
-	it("indexes a synthetic corpus and returns ranked hits for a relevant query", () => {
-		const stats = JSON.parse(core.indexCorpus(workDir, true));
+	it("indexes a synthetic corpus and returns ranked hits for a relevant query", async () => {
+		const stats = JSON.parse(await core.indexCorpus(workDir, true));
 		expect(stats.files_indexed).toBeGreaterThanOrEqual(2);
 		expect(stats.chunks_total).toBeGreaterThan(0);
 
@@ -94,7 +94,7 @@ describe("ream-mcp > integration > docs.search", () => {
 		expect(top.content.toLowerCase()).toContain("entity");
 	});
 
-	it("never serves app runtime data (storage/, tmp/) as documentation", () => {
+	it("never serves app runtime data (storage/, tmp/) as documentation", async () => {
 		mkdirSync(join(workDir, "storage", "uploads"), { recursive: true });
 		mkdirSync(join(workDir, "tmp"));
 		writeFileSync(
@@ -105,13 +105,13 @@ describe("ream-mcp > integration > docs.search", () => {
 			join(workDir, "tmp", "note.md"),
 			"# Note\n\nzorblaxquux scratch.\n",
 		);
-		core.indexCorpus(workDir, true);
+		await core.indexCorpus(workDir, true);
 		const result = JSON.parse(core.search(workDir, "zorblaxquux", ""));
 		expect(result.hits).toEqual([]);
 	});
 
-	it("respects the package filter", () => {
-		core.indexCorpus(workDir, true);
+	it("respects the package filter", async () => {
+		await core.indexCorpus(workDir, true);
 		const opts = JSON.stringify({ package: "atlas" });
 		const json = core.search(workDir, "decorator entity", opts);
 		const result = JSON.parse(json);
@@ -120,8 +120,8 @@ describe("ream-mcp > integration > docs.search", () => {
 		}
 	});
 
-	it("respects the type filter", () => {
-		core.indexCorpus(workDir, true);
+	it("respects the type filter", async () => {
+		await core.indexCorpus(workDir, true);
 		const opts = JSON.stringify({ type: "Bmad" });
 		const json = core.search(workDir, "MCP epic", opts);
 		const result = JSON.parse(json);
@@ -130,8 +130,8 @@ describe("ream-mcp > integration > docs.search", () => {
 		}
 	});
 
-	it("returns BM25-only confidence when embeddings are offline", () => {
-		core.indexCorpus(workDir, true);
+	it("returns BM25-only confidence when embeddings are offline", async () => {
+		await core.indexCorpus(workDir, true);
 		const json = core.search(workDir, "entity", "");
 		const result = JSON.parse(json);
 		expect(["low", "medium", "high"]).toContain(result.confidence);
@@ -141,8 +141,8 @@ describe("ream-mcp > integration > docs.search", () => {
 		expect(result.knownGaps.length).toBeGreaterThan(0);
 	});
 
-	it("respects the limit option", () => {
-		core.indexCorpus(workDir, true);
+	it("respects the limit option", async () => {
+		await core.indexCorpus(workDir, true);
 		const opts = JSON.stringify({ limit: 2 });
 		const json = core.search(workDir, "entity decorator", opts);
 		const result = JSON.parse(json);

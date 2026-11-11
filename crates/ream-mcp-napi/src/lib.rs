@@ -11,6 +11,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use napi::bindgen_prelude::AsyncTask;
+use napi::{Env, Task};
 use napi_derive::napi;
 use once_cell::sync::Lazy;
 
@@ -77,23 +79,43 @@ pub fn embedding_model() -> napi::Result<String> {
     serde_json::to_string(&out).map_err(|e| napi::Error::from_reason(format!("json: {e}")))
 }
 
-/// Run an incremental (or full) corpus index. Returns the JSON-encoded
-/// `IndexStats` (`{ files_seen, files_indexed, files_unchanged,
-/// files_skipped, chunks_total, elapsed_ms }`).
-#[napi(js_name = "indexCorpus")]
-pub fn index_corpus(root: String, full: bool) -> napi::Result<String> {
-    let result = with_store(&root, |store| {
-        index(
-            store,
-            &IndexConfig {
-                root: PathBuf::from(&root),
-                full_rebuild: full,
-            },
-        )
-    })
-    .map_err(napi::Error::from_reason)?;
-    let stats = result.map_err(|e| napi::Error::from_reason(format!("index: {e}")))?;
-    serde_json::to_string(&stats).map_err(|e| napi::Error::from_reason(format!("json: {e}")))
+/// The corpus index, run on the libuv thread pool so the event loop keeps
+/// serving requests (the MCP `initialize` included) while it works.
+pub struct IndexTask {
+    root: String,
+    full: bool,
+}
+
+impl Task for IndexTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> napi::Result<String> {
+        let result = with_store(&self.root, |store| {
+            index(
+                store,
+                &IndexConfig {
+                    root: PathBuf::from(&self.root),
+                    full_rebuild: self.full,
+                },
+            )
+        })
+        .map_err(napi::Error::from_reason)?;
+        let stats = result.map_err(|e| napi::Error::from_reason(format!("index: {e}")))?;
+        serde_json::to_string(&stats).map_err(|e| napi::Error::from_reason(format!("json: {e}")))
+    }
+
+    fn resolve(&mut self, _env: Env, output: String) -> napi::Result<String> {
+        Ok(output)
+    }
+}
+
+/// Run an incremental (or full) corpus index off the main thread. Resolves
+/// to the JSON-encoded `IndexStats` (`{ files_seen, files_indexed,
+/// files_unchanged, files_skipped, chunks_total, elapsed_ms }`).
+#[napi(js_name = "indexCorpus", ts_return_type = "Promise<string>")]
+pub fn index_corpus(root: String, full: bool) -> AsyncTask<IndexTask> {
+    AsyncTask::new(IndexTask { root, full })
 }
 
 /// Hybrid search. Returns JSON `SearchResult`. Pass an empty string for

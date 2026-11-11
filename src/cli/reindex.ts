@@ -67,7 +67,7 @@ async function main(): Promise<number> {
 		`[ream-mcp] reindex (${full ? "full" : "incremental"}) at ${root}\n`,
 	);
 	try {
-		const json = core.indexCorpus(root, full);
+		const json = await core.indexCorpus(root, full);
 		const stats = JSON.parse(json) as IndexStats;
 		process.stderr.write(
 			`[ream-mcp] done: ${stats.files_indexed} indexed, ${stats.files_unchanged} unchanged, ${stats.files_skipped} skipped, ${stats.chunks_total} chunks in ${stats.elapsed_ms}ms\n`,

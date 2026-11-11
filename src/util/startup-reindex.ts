@@ -4,10 +4,13 @@
  * which held the stdio transport closed for the full duration of the
  * corpus index. An MCP client `initialize` request landed on a dead
  * pipe and timed out — `tools/list` is index-independent but couldn't
- * even reach a handler. Now the reindex fires in the background; the
- * exported `indexReady` promise lets index-dependent tools
- * (`docs.search`, `docs.getChunk`, `docs.auditDrift`) await it on
- * demand, and the transport opens as soon as handlers are registered.
+ * even reach a handler. The native `indexCorpus` runs on the libuv
+ * thread pool and returns a promise, so the event loop keeps reading
+ * requests while it works (calling a synchronous index from an async
+ * function would not have: an async function runs synchronously up to
+ * its first await). The exported `indexReady` promise lets
+ * index-dependent tools (`docs.search`, `docs.get`, `docs.explain`,
+ * `docs.audit_drift`) await it on demand.
  *
  * Output goes to stderr (preserves stdout for JSON-RPC). If the
  * project root cannot be detected, we log a warning and `indexReady`
@@ -56,12 +59,7 @@ export function startStartupReindex(): void {
 	void runStartupReindex().finally(() => indexReadyResolver());
 }
 
-/**
- * Direct entrypoint kept for backward compatibility and for tests
- * that want to drive the reindex synchronously. Production callers
- * should use `startStartupReindex()` + `await indexReady` instead.
- */
-export async function runStartupReindex(): Promise<void> {
+async function runStartupReindex(): Promise<void> {
 	let root: string;
 	try {
 		root = detectProjectRoot().path;
@@ -71,7 +69,7 @@ export async function runStartupReindex(): Promise<void> {
 		return;
 	}
 	try {
-		const json = core.indexCorpus(root, false);
+		const json = await core.indexCorpus(root, false);
 		const stats = JSON.parse(json) as IndexStats;
 		process.stderr.write(
 			`[ream-mcp] reindex: ${stats.files_indexed} indexed, ${stats.files_unchanged} unchanged, ${stats.files_skipped} skipped, ${stats.chunks_total} chunks total in ${stats.elapsed_ms}ms\n`,

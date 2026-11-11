@@ -15,12 +15,15 @@ export declare function version(): string;
 export declare function embeddingModel(): string;
 
 /**
- * Run an incremental (or full) corpus index. Returns the JSON-encoded
- * `IndexStats` (`{ files_seen, files_indexed, files_unchanged,
- * files_skipped, chunks_total, elapsed_ms }`).
+ * Run an incremental (or full) corpus index off the main thread. Resolves
+ * to the JSON-encoded `IndexStats` (`{ files_seen, files_indexed,
+ * files_unchanged, files_skipped, chunks_total, elapsed_ms }`).
  */
 
-export declare function indexCorpus(root: string, full: boolean): string;
+export declare function indexCorpus(
+	root: string,
+	full: boolean,
+): Promise<string>;
 
 /**
  * Hybrid search. Returns JSON `SearchResult`. Pass an empty string for
