@@ -7,7 +7,7 @@
  */
 
 import { Node, SyntaxKind } from "ts-morph";
-
+import { projectPath } from "../util/project-path.js";
 import {
 	findCallExpressions,
 	isLoadError,
@@ -49,7 +49,7 @@ export function dispatchStation(
 	if (isLoadError(loaded)) return shapeError(loaded.error, loaded.hint);
 	switch (name) {
 		case "station.list_resources":
-			return listResources(loaded.project);
+			return listResources(loaded.project, loaded.root);
 		default:
 			return shapeError(
 				`Unknown station tool: ${name}`,
@@ -58,12 +58,18 @@ export function dispatchStation(
 	}
 }
 
-function listResources(project: Parameters<typeof findCallExpressions>[0]) {
+function listResources(
+	project: Parameters<typeof findCallExpressions>[0],
+	root: string,
+) {
 	const sites = findCallExpressions(
 		project,
 		(leaf) => leaf === "defineResource",
 	);
-	const resources = sites.map(parseResourceSite);
+	const resources = sites.map(parseResourceSite).map((resource) => ({
+		...resource,
+		file: projectPath(root, resource.file),
+	}));
 	return {
 		resources,
 		confidence:

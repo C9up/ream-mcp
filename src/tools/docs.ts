@@ -12,6 +12,7 @@
 
 import { core } from "../../index.js";
 import { isRecord } from "../util/guards.js";
+import { projectPath } from "../util/project-path.js";
 import { indexReady } from "../util/startup-reindex.js";
 import {
 	findSymbol,
@@ -48,16 +49,16 @@ export async function dispatchDocs(
 	name: string,
 	args: Record<string, unknown> = {},
 ): Promise<unknown> {
-	// `docs.trace` reads the sources, not the index: it does not wait.
+	// `docs.trace` reads the sources, not the index: it does not wait, and
+	// `docs.explain` waits only when it falls back to a search.
 	if (name === "docs.trace") return handleTrace(root, args);
+	if (name === "docs.explain") return handleExplain(root, args);
 	await indexReady;
 	switch (name) {
 		case "docs.search":
 			return handleSearch(root, args);
 		case "docs.get":
 			return handleGet(root, args);
-		case "docs.explain":
-			return handleExplain(root, args);
 		case "docs.audit_drift":
 			return handleAuditDrift(root);
 		default:
@@ -86,7 +87,7 @@ function handleGet(root: string, args: Record<string, unknown>) {
 	return JSON.parse(json);
 }
 
-function handleExplain(root: string, args: Record<string, unknown>) {
+async function handleExplain(root: string, args: Record<string, unknown>) {
 	const symbol = typeof args.symbol === "string" ? args.symbol : null;
 	const file = typeof args.file === "string" ? args.file : null;
 	const query = symbol ?? file;
@@ -104,7 +105,10 @@ function handleExplain(root: string, args: Record<string, unknown>) {
 				return {
 					symbol: site.name,
 					kind: site.kind,
-					source: { file: site.file, lines: [site.line, site.line] },
+					source: {
+						file: projectPath(root, site.file),
+						lines: [site.line, site.line],
+					},
 					signature: site.signature,
 					confidence: "high" as const,
 					knownGaps: [],
@@ -112,6 +116,7 @@ function handleExplain(root: string, args: Record<string, unknown>) {
 			}
 		}
 	}
+	await indexReady;
 	const opts = { type: "Code" };
 	const json = core.search(root, query, JSON.stringify(opts));
 	const result = JSON.parse(json) as { hits: unknown[] };

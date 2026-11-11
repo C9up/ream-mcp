@@ -22,6 +22,7 @@ import {
 	type SourceFile,
 	SyntaxKind,
 } from "ts-morph";
+import { projectPath } from "../util/project-path.js";
 
 import {
 	evaluateLiteral,
@@ -82,7 +83,9 @@ function wrap<T extends Record<string, unknown>>(
 ): T & { confidence: Confidence; knownGaps: string[] } {
 	const parseGaps =
 		loaded.parseErrors.length > 0
-			? loaded.parseErrors.map((p) => `parse error in ${p}`)
+			? loaded.parseErrors.map(
+					(p) => `parse error in ${projectPath(loaded.root, p)}`,
+				)
 			: [];
 	const knownGaps = [...parseGaps, ...extraGaps];
 	return {
@@ -167,7 +170,7 @@ function listRoutes(loaded: LoadedProject): { routes: RouteRow[] } {
 			action,
 			middleware: [...enclosing.middleware],
 			guards: [...enclosing.guards],
-			file: site.file,
+			file: projectPath(loaded.root, site.file),
 			line: site.line,
 		});
 	}
@@ -315,7 +318,14 @@ function listEntities(loaded: LoadedProject): { entities: EntityRow[] } {
 	const decorated = findClassesByDecorator(loaded.project, "Entity");
 	const out: EntityRow[] = [];
 	for (const e of decorated) {
-		out.push(buildEntityRow(e.decl, e.decorator, e.file, e.line));
+		out.push(
+			buildEntityRow(
+				e.decl,
+				e.decorator,
+				projectPath(loaded.root, e.file),
+				e.line,
+			),
+		);
 	}
 	return { entities: out };
 }
@@ -477,7 +487,7 @@ function collectSubscribers(loaded: LoadedProject): CollectedSubscriber[] {
 			event: typeof lit === "string" ? lit : null,
 			expression: typeof lit === "string" ? undefined : first.getText(),
 			target: null,
-			file: c.file,
+			file: projectPath(loaded.root, c.file),
 			line: c.line,
 		});
 	}
@@ -492,7 +502,7 @@ function collectSubscribers(loaded: LoadedProject): CollectedSubscriber[] {
 			expression:
 				typeof lit === "string" ? undefined : (arg?.getText() ?? "<no-arg>"),
 			target: l.decl.getName() ?? null,
-			file: l.file,
+			file: projectPath(loaded.root, l.file),
 			line: l.line,
 		});
 	}
@@ -524,7 +534,11 @@ function collectEmitters(loaded: LoadedProject): CollectedEmitter[] {
 		if (!first) continue;
 		const lit = evaluateLiteral(first);
 		if (typeof lit === "string") {
-			out.push({ event: lit, file: c.file, line: c.line });
+			out.push({
+				event: lit,
+				file: projectPath(loaded.root, c.file),
+				line: c.line,
+			});
 			continue;
 		}
 		// `bus.emit(new SomeEvent(...))` OR `bus.emit(SomeEvent)` —
@@ -535,7 +549,7 @@ function collectEmitters(loaded: LoadedProject): CollectedEmitter[] {
 		out.push({
 			event: resolved.name,
 			expression: resolved.name === null ? first.getText() : undefined,
-			file: c.file,
+			file: projectPath(loaded.root, c.file),
 			line: c.line,
 		});
 	}
@@ -636,13 +650,18 @@ function listProviders(loaded: LoadedProject): { providers: ProviderRow[] } {
 		for (const cls of sf.getClasses()) {
 			const name = cls.getName();
 			if (!name?.endsWith("Provider")) continue;
-			out.push(buildProviderRow(cls, sf));
+			out.push(buildProviderRow(cls, sf, loaded.root));
 		}
 	}
 	return { providers: out };
 }
 
-function buildProviderRow(cls: ClassDeclaration, sf: SourceFile): ProviderRow {
+function buildProviderRow(
+	cls: ClassDeclaration,
+	sf: SourceFile,
+	root: string,
+): ProviderRow {
+	const file = projectPath(root, sf.getFilePath());
 	const lifecycle: ProviderRow["lifecycle"] = {
 		register: null,
 		boot: null,
@@ -676,14 +695,14 @@ function buildProviderRow(cls: ClassDeclaration, sf: SourceFile): ProviderRow {
 		bindings.push({
 			kind: method === "bind" ? "bind" : "singleton",
 			token,
-			file: sf.getFilePath(),
+			file,
 			line: node.getStartLineNumber(),
 		});
 	});
 
 	return {
 		name: cls.getName() ?? "<anonymous>",
-		file: sf.getFilePath(),
+		file,
 		line: cls.getStartLineNumber(),
 		lifecycle,
 		bindings,
@@ -726,7 +745,7 @@ function listMiddleware(
 
 	const out: MiddlewareRow[] = [];
 	for (const cls of kernelFile.getClasses()) {
-		extractKernelArrays(cls, kernelFile, out);
+		extractKernelArrays(cls, kernelFile, out, root);
 	}
 	// Some kernels declare arrays at module scope rather than in a
 	// class — accept that shape too.
@@ -735,7 +754,7 @@ function listMiddleware(
 		if (name !== "globalMiddleware" && name !== "namedMiddleware") continue;
 		const init = v.getInitializer();
 		if (!init) continue;
-		appendKernelEntries(name, init, kernelFile, out);
+		appendKernelEntries(name, init, kernelFile, out, root);
 	}
 
 	return { middleware: out };
@@ -745,11 +764,12 @@ function extractKernelArrays(
 	cls: ClassDeclaration,
 	sf: SourceFile,
 	out: MiddlewareRow[],
+	root: string,
 ): void {
 	const handle = (name: string, init: Node | undefined) => {
 		if (!init) return;
 		if (name !== "globalMiddleware" && name !== "namedMiddleware") return;
-		appendKernelEntries(name, init, sf, out);
+		appendKernelEntries(name, init, sf, out, root);
 	};
 	for (const prop of cls.getInstanceProperties()) {
 		const name = prop.getName();
@@ -780,7 +800,9 @@ function appendKernelEntries(
 	init: Node,
 	sf: SourceFile,
 	out: MiddlewareRow[],
+	root: string,
 ): void {
+	const file = projectPath(root, sf.getFilePath());
 	const kind: "global" | "named" =
 		source === "globalMiddleware" ? "global" : "named";
 
@@ -790,7 +812,7 @@ function appendKernelEntries(
 				name: el.getText(),
 				kind,
 				ref: el.getText(),
-				file: sf.getFilePath(),
+				file,
 				line: el.getStartLineNumber(),
 			});
 		}
@@ -804,7 +826,7 @@ function appendKernelEntries(
 				name: prop.getName(),
 				kind,
 				ref: valueNode?.getText() ?? "<unknown>",
-				file: sf.getFilePath(),
+				file,
 				line: prop.getStartLineNumber(),
 			});
 		}

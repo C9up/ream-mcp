@@ -29,6 +29,8 @@ import {
 } from "ts-morph";
 
 export interface LoadedProject {
+	/** The project root the paths of a tool result are made relative to. */
+	root: string;
 	project: Project;
 	tsConfigPath: string;
 	parseErrors: string[];
@@ -128,6 +130,7 @@ export function loadProject(root: string): LoadedProject | LoadError {
 				// project rather than failing the whole call.
 			}
 			return {
+				root,
 				project: cached.project,
 				tsConfigPath: cached.tsConfigPath,
 				parseErrors: cached.parseErrors,
@@ -166,6 +169,7 @@ export function loadProject(root: string): LoadedProject | LoadError {
 	};
 	CACHE.set(root, entry);
 	return {
+		root,
 		project,
 		tsConfigPath,
 		parseErrors,

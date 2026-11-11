@@ -24,6 +24,7 @@ import { resolveBmadRoot } from "../util/bmad-resolver.js";
 import { existsInside } from "../util/containment.js";
 import { walkProjectFiles } from "../util/fs-walk.js";
 import { walkWorkspacePackages } from "../util/package-walker.js";
+import { projectPath } from "../util/project-path.js";
 import {
 	atomicWrite,
 	findStatusLine,
@@ -142,9 +143,13 @@ function runLocate(root: string): unknown {
 	}
 	return wrap(
 		{
-			root: result.root,
+			root: projectPath(root, result.root),
 			tier: result.tier,
-			candidates: result.candidates,
+			// An unset tier has no path: keep it empty rather than ".".
+			candidates: result.candidates.map((c) => ({
+				...c,
+				path: c.path === "" ? "" : projectPath(root, c.path),
+			})),
 		},
 		[],
 	);

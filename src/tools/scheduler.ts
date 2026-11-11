@@ -8,7 +8,7 @@
  */
 
 import { type Decorator, Node } from "ts-morph";
-
+import { projectPath } from "../util/project-path.js";
 import {
 	findCallExpressions,
 	isLoadError,
@@ -50,7 +50,7 @@ export function dispatchScheduler(
 	if (isLoadError(loaded)) return shapeError(loaded.error, loaded.hint);
 	switch (name) {
 		case "scheduler.list_tasks":
-			return listTasks(loaded.project);
+			return listTasks(loaded.project, loaded.root);
 		default:
 			return shapeError(
 				`Unknown scheduler tool: ${name}`,
@@ -59,11 +59,14 @@ export function dispatchScheduler(
 	}
 }
 
-function listTasks(project: Parameters<typeof findCallExpressions>[0]) {
+function listTasks(
+	project: Parameters<typeof findCallExpressions>[0],
+	root: string,
+) {
 	const tasks = [
 		...collectScheduleDecorators(project),
 		...collectRegisterCalls(project),
-	];
+	].map((task) => ({ ...task, file: projectPath(root, task.file) }));
 	tasks.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 	return {
 		tasks,
