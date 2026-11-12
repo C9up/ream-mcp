@@ -4,6 +4,7 @@
  * parents) nor make rustup install a toolchain.
  */
 
+import { execFileSync } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
@@ -20,8 +21,6 @@ import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { dispatchDoctor } from "../../src/tools/doctor.js";
-
-const RUSTUP_CARGO = join(homedir(), ".cargo", "bin", "cargo");
 
 const VARS = [
 	"PATH",
@@ -97,8 +96,9 @@ describe("doctor.health cargo isolation", () => {
 		expect(existsSync(join(project, "PWNED"))).toBe(false);
 	});
 
-	// Needs rustup at ~/.cargo/bin, as every POSIX CI runner and Rust
-	// developer machine has; without it this fails rather than skipping.
+	// Needs a rustup-managed `cargo` on PATH: ~/.cargo/bin for a rustup-init
+	// install, Homebrew's rustup bin on the macOS runners. Without one the
+	// control run below fails rather than skipping.
 	it("ignores a project rust-toolchain.toml that points rustup at a repo binary", async () => {
 		const toolchain = join(base, "tc");
 		mkdirSync(join(toolchain, "bin"), { recursive: true });
@@ -114,10 +114,17 @@ describe("doctor.health cargo isolation", () => {
 			join(project, "rust-toolchain.toml"),
 			`[toolchain]\npath = "${toolchain}"\n`,
 		);
-		expect(existsSync(RUSTUP_CARGO)).toBe(true);
 		process.env.PATH = `${join(homedir(), ".cargo", "bin")}${delimiter}${process.env.PATH ?? ""}`;
 		delete process.env.RUSTUP_TOOLCHAIN;
 		process.chdir(project);
+
+		// Control: the cargo on PATH, run from the project, does obey the file.
+		// Otherwise the check below would pass without rustup in the loop.
+		expect(
+			execFileSync("cargo", ["--version"], { cwd: project, encoding: "utf8" }),
+		).toBe("cargo 9.9.9 (fake)\n");
+		expect(existsSync(pwned)).toBe(true);
+		rmSync(pwned);
 
 		const result = await dispatchDoctor(project, "doctor.health", {});
 		expect(existsSync(pwned)).toBe(false);
