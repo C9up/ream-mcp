@@ -59,7 +59,7 @@ const PKG_NAME = "@c9up/ream-mcp";
 // Keep in sync with package.json / Cargo — surfaced as MCP serverInfo.version.
 // Enforced by tests/unit/version-consistency.test.ts (package.json === this ===
 // core.version()), so a bump that forgets one source fails CI.
-const PKG_VERSION = "0.1.24";
+const PKG_VERSION = "0.1.25";
 const SHUTDOWN_TIMEOUT_MS = 500;
 
 export interface BootstrapOptions {
