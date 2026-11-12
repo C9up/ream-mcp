@@ -5,11 +5,12 @@
  * UNIQUE constraint from then on.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { core } from "../../index.js";
+import { removeIndexedProject } from "../test-utils.js";
 
 let root: string;
 
@@ -24,7 +25,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(root, { recursive: true, force: true });
+	removeIndexedProject(root);
 });
 
 describe("docs index > chunk ids", () => {

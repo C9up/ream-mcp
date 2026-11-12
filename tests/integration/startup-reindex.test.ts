@@ -4,7 +4,7 @@
  * read until the whole corpus is indexed times out on a large project.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -14,6 +14,7 @@ import {
 	indexReady,
 	startStartupReindex,
 } from "../../src/util/startup-reindex.js";
+import { removeIndexedProject } from "../test-utils.js";
 
 const saved = process.env.REAM_PROJECT_ROOT;
 let root: string;
@@ -37,7 +38,7 @@ beforeAll(() => {
 afterAll(() => {
 	if (saved === undefined) delete process.env.REAM_PROJECT_ROOT;
 	else process.env.REAM_PROJECT_ROOT = saved;
-	rmSync(root, { recursive: true, force: true });
+	removeIndexedProject(root);
 });
 
 describe("startup reindex", () => {
