@@ -1,0 +1,17 @@
+# What `cargo audit --deny warnings` may pass over in ream-mcp, and why.
+#
+# CI runs `cargo audit --deny warnings` from this directory, so every
+# advisory fails the release, unmaintained and unsound ones included, unless
+# it is listed here. An entry is a claim that has to stay checkable: say why it
+# cannot be removed today and what upstream release lets it go.
+
+[advisories]
+ignore = [
+  # RUSTSEC-2024-0436: `paste` is unmaintained, no fixed release. It is a
+  # compile-time proc-macro with no runtime code. It reaches ream-mcp through
+  # fastembed 6: `tokenizers` 0.22 and `image` 0.25 (rav1e, pulp). fastembed 7
+  # is a major bump, and rav1e 0.8.1, the latest release, still depends on it.
+  # DROP WHEN neither tokenizers nor rav1e depends on paste in the line
+  # fastembed resolves to, then update fastembed and `cargo update`.
+  "RUSTSEC-2024-0436",
+]
