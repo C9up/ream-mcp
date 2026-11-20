@@ -6,9 +6,10 @@
  * when `step` exceeds applied batches.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -149,6 +150,57 @@ describe("migration > rollback", () => {
 		})) as DryRollbackShape;
 		// Only one batch was applied; cap to that.
 		expect(result.wouldRollback.length).toBe(2);
+	});
+
+	it("previews without creating anything in the database, even with no launch flag", async () => {
+		// The default dry-run is a read: it is gated by nothing, so it must not
+		// create the tracking table (nor anything else) on the database the URL
+		// names, production included.
+		delete process.env.REAM_MCP_ALLOW_MIGRATIONS;
+		const result = (await dispatchMigration(
+			tmpDbDir,
+			"migration.rollback",
+			{},
+		)) as DryRollbackShape;
+		expect(result.wouldRollback).toEqual([]);
+		expect(result.knownGaps).toContainEqual(
+			expect.stringMatching(/tracking table `\w+` not initialised/),
+		);
+		const file = join(tmpDbDir, "test.db");
+		if (existsSync(file)) {
+			const db = new DatabaseSync(file, { readOnly: true });
+			try {
+				const tables = db
+					.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+					.all();
+				expect(tables).toEqual([]);
+			} finally {
+				db.close();
+			}
+		}
+	});
+
+	it("rolls back nothing, and creates nothing, when the tracking table is absent", async () => {
+		const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
+			dryRun: false,
+			confirm: true,
+		})) as RolledBackShape & { knownGaps: string[] };
+		expect(result.rolledBack).toEqual([]);
+		expect(result.knownGaps).toContainEqual(
+			expect.stringMatching(/tracking table `\w+` not initialised/),
+		);
+		const file = join(tmpDbDir, "test.db");
+		if (existsSync(file)) {
+			const db = new DatabaseSync(file, { readOnly: true });
+			try {
+				const tables = db
+					.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+					.all();
+				expect(tables).toEqual([]);
+			} finally {
+				db.close();
+			}
+		}
 	});
 
 	it("rejects non-positive integer step", async () => {

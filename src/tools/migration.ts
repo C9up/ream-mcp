@@ -334,7 +334,20 @@ async function runRollback(
 
 	try {
 		const runner = bridge.runner;
-		await runner.init();
+		// No `runner.init()`: it creates the tracking table, and neither a
+		// preview (which no gate guards) nor a rollback with nothing applied is
+		// consent to a schema change on the database the URL names. Without the
+		// table nothing was ever migrated, so there is nothing to roll back.
+		if (
+			!(await trackingTableExists(bridge.connection, bridge.migrationsTable))
+		) {
+			knownGaps.push(
+				`migrations tracking table \`${bridge.migrationsTable}\` not initialised: nothing has been migrated yet`,
+			);
+			return inputs.dryRun
+				? wrap({ wouldRollback: [] }, knownGaps)
+				: wrap({ rolledBack: [] }, knownGaps);
+		}
 
 		if (inputs.dryRun) {
 			const wouldRollback = await previewRollback(bridge, step);
