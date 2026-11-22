@@ -1,5 +1,5 @@
 /**
- * The server as an MCP client sees it, over an in-memory transport: what
+ * The server as an MCP client sees it, over in-memory streams: what
  * `tools/list` advertises and how `tools/call` reports failures.
  */
 
@@ -7,10 +7,6 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import {
 	afterAll,
 	afterEach,
@@ -21,39 +17,79 @@ import {
 	it,
 } from "vitest";
 
-import { registerAllTools } from "../../src/server.js";
+import { McpServer } from "../../src/protocol/server.js";
+import { toolsHandlers } from "../../src/server.js";
 import { startStartupReindex } from "../../src/util/startup-reindex.js";
+import { TestClient } from "../protocol-client.js";
 import { removeIndexedProject } from "../test-utils.js";
 
-let client: Client;
-let server: Server;
+let client: TestClient;
+let server: McpServer;
+
+interface ListedTool {
+	name: string;
+	annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
+	inputSchema?: { properties?: Record<string, unknown> };
+}
+
+function isListedTool(value: unknown): value is ListedTool {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"name" in value &&
+		typeof value.name === "string"
+	);
+}
+
+async function listTools(): Promise<ListedTool[]> {
+	const reply = await client.request("tools/list", {});
+	const tools = reply.result?.tools;
+	if (!Array.isArray(tools)) throw new Error("tools/list returned no tools");
+	return tools.filter(isListedTool);
+}
+
+async function callTool(
+	name: string,
+	args?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+	const reply = await client.request("tools/call", {
+		name,
+		...(args ? { arguments: args } : {}),
+	});
+	if (reply.error) {
+		throw new Error(`${reply.error.code}: ${reply.error.message}`);
+	}
+	return reply.result ?? {};
+}
 
 beforeEach(async () => {
-	server = new Server(
+	server = new McpServer(
 		{ name: "ream-mcp-test", version: "0.0.0" },
-		{ capabilities: { tools: {} } },
+		toolsHandlers(),
 	);
-	registerAllTools(server);
-	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-	client = new Client({ name: "test-client", version: "0.0.0" });
-	await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+	client = new TestClient(server);
+	await client.request("initialize", {
+		protocolVersion: "2025-11-25",
+		capabilities: {},
+		clientInfo: { name: "test-client", version: "0.0.0" },
+	});
+	client.notify("notifications/initialized");
 });
 
 afterEach(async () => {
-	await client.close();
 	await server.close();
 });
 
 describe("tools/list annotations", () => {
 	it("annotates every tool", async () => {
-		const { tools } = await client.listTools();
+		const tools = await listTools();
 		for (const tool of tools) {
 			expect(tool.annotations, tool.name).toBeDefined();
 		}
 	});
 
 	it("marks the write tools destructive and never read-only", async () => {
-		const { tools } = await client.listTools();
+		const tools = await listTools();
 		const byName = new Map(tools.map((t) => [t.name, t]));
 		for (const name of [
 			"migration.run",
@@ -69,7 +105,7 @@ describe("tools/list annotations", () => {
 	});
 
 	it("marks the inspection tools read-only", async () => {
-		const { tools } = await client.listTools();
+		const tools = await listTools();
 		const byName = new Map(tools.map((t) => [t.name, t]));
 		for (const name of [
 			"list.routes",
@@ -88,7 +124,7 @@ describe("tools/list annotations", () => {
 	});
 
 	it("no longer advertises caller-side production flags", async () => {
-		const { tools } = await client.listTools();
+		const tools = await listTools();
 		for (const name of ["migration.run", "migration.rollback"]) {
 			const schema = tools.find((t) => t.name === name)?.inputSchema;
 			const props = Object.keys(schema?.properties ?? {});
@@ -150,22 +186,39 @@ describe("tools/call failures", () => {
 	}
 
 	it("answers an unknown tool with a -32602 protocol error, at once", async () => {
-		const call = within(client.callTool({ name: "no.such.tool" }), 3000);
-		await expect(call).rejects.toBeInstanceOf(McpError);
-		await call.catch((err: unknown) => {
-			expect(err instanceof McpError ? err.code : undefined).toBe(-32602);
-			expect(err instanceof Error ? err.message : "").toContain(
-				"Unknown tool: no.such.tool",
-			);
-		});
+		const reply = await within(
+			client.request("tools/call", { name: "no.such.tool" }),
+			3000,
+		);
+		expect(reply.error?.code).toBe(-32602);
+		expect(reply.error?.message).toContain("Unknown tool: no.such.tool");
+	});
+
+	it("refuses arguments outside the tool's schema before the tool runs", async () => {
+		const result = await within(
+			callTool("docs.search", { query: "x", limit: -1, extra: true }),
+			3000,
+		);
+		expect(result.isError).toBe(true);
+		const body = JSON.parse(text(result));
+		expect(body.error).toBe("invalid arguments for docs.search");
+		expect(body.problems).toEqual([
+			"limit must be >= 1",
+			"extra is not an accepted argument",
+		]);
+	});
+
+	it("refuses a missing required argument", async () => {
+		const result = await within(callTool("docs.search", {}), 3000);
+		expect(result.isError).toBe(true);
+		expect(JSON.parse(text(result)).problems).toEqual(["query is required"]);
 	});
 
 	it("reports a thrown failure without stack frames or absolute paths", async () => {
+		// The schema allows any number >= 1; the native side wants an integer,
+		// so a fractional limit gets past validation and throws inside the tool.
 		const result = await within(
-			client.callTool({
-				name: "docs.search",
-				arguments: { query: "x", limit: -1 },
-			}),
+			callTool("docs.search", { query: "x", limit: 1.5 }),
 			10_000,
 		);
 		expect(result.isError).toBe(true);
@@ -181,20 +234,14 @@ describe("tools/call failures", () => {
 			["migration.run", { dryRun: false }],
 			["generate.controller", { name: "x" }],
 		] as const) {
-			const result = await within(
-				client.callTool({ name, arguments: args }),
-				10_000,
-			);
+			const result = await within(callTool(name, args), 10_000);
 			expect(result.isError, name).toBe(true);
 			expect(text(result), name).toContain('"error"');
 		}
 	});
 
 	it("leaves a successful result unflagged", async () => {
-		const result = await within(
-			client.callTool({ name: "migration.status", arguments: {} }),
-			10_000,
-		);
+		const result = await within(callTool("migration.status", {}), 10_000);
 		expect(result.isError).toBeFalsy();
 	});
 });

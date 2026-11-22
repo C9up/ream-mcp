@@ -8,7 +8,17 @@
  * means "may modify", an absent `destructiveHint` means "may destroy").
  */
 
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+/**
+ * MCP's tool annotations (2025-11-25 schema, `ToolAnnotations`): hints for
+ * the client, never trusted as a security boundary by it.
+ */
+export interface ToolAnnotations {
+	title?: string;
+	readOnlyHint?: boolean;
+	destructiveHint?: boolean;
+	idempotentHint?: boolean;
+	openWorldHint?: boolean;
+}
 
 export interface ToolDescriptor {
 	name: string;

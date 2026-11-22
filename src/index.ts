@@ -8,7 +8,7 @@
  * JSON-RPC stream. Errors and observability go through stderr.
  *
  * `signal-bootstrap` MUST be imported before `server.js` so a
- * SIGTERM that arrives while heavy modules (ts-morph, MCP SDK) are
+ * SIGTERM that arrives while heavy modules (ts-morph) are
  * still loading is caught and translated into a clean exit. See
  * the module's header for the rationale.
  */

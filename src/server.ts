@@ -14,15 +14,10 @@
  * clean exit instead of process termination at exit code 143.
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-	CallToolRequestSchema,
-	ErrorCode,
-	ListToolsRequestSchema,
-	McpError,
-} from "@modelcontextprotocol/sdk/types.js";
 import { core } from "../index.js";
+import { validateArguments } from "./protocol/arguments.js";
+import { ErrorCode, McpError } from "./protocol/jsonrpc.js";
+import { McpServer, type ToolsHandlers } from "./protocol/server.js";
 import { uninstallEarlyHandlers } from "./signal-bootstrap.js";
 import { errorContent, jsonContent } from "./tools/_helpers.js";
 import { BMAD_TOOLS, isBmadTool } from "./tools/bmad.descriptors.js";
@@ -69,9 +64,8 @@ export interface BootstrapOptions {
 }
 
 export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
-	const transportRef: { current: Closeable | null } = { current: null };
 	const serverRef: { current: Closeable | null } = { current: null };
-	installSignalHandlers(transportRef, serverRef);
+	installSignalHandlers(serverRef);
 
 	if (!options.skipNapiHealthCheck) {
 		const rustVersion = core.version();
@@ -83,9 +77,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
 		process.stderr.write(`[ream-mcp] core ${rustVersion} loaded\n`);
 	}
 
-	const server = new Server(
+	const server = new McpServer(
 		{ name: PKG_NAME, version: PKG_VERSION },
-		{ capabilities: { tools: {} } },
+		toolsHandlers(),
 	);
 
 	// Audit 2026-05-22 F2: handlers MUST exist before the transport is
@@ -103,31 +97,16 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
 	// `initialize`, and the introspection / generate / quality /
 	// migration / security / bmad / doctor families don't need the
 	// docs corpus and respond instantly.
-	registerAllTools(server);
 	startStartupReindex();
 
-	const transport = new StdioServerTransport();
-	// Assign refs BEFORE connecting so a SIGTERM that arrives during
-	// `await server.connect()` (which can take 10s-100s of ms on a
-	// cold transport) sees the closeables and triggers a clean
-	// shutdown instead of orphaning the file descriptor.
-	transportRef.current = transport;
+	// Assign the ref BEFORE connecting so a SIGTERM that arrives while the
+	// streams are being attached sees the closeable and shuts down cleanly.
 	serverRef.current = server;
-	await server.connect(transport);
-}
-
-interface CallToolHandlerArgs {
-	params: {
-		name: string;
-		arguments?: Record<string, unknown>;
-	};
+	server.connect(process.stdin, process.stdout);
 }
 
 /**
- * Single combined tools/list + tools/call handler. The MCP SDK
- * keeps one handler per request type, so docs.* and introspect.*
- * must share a dispatcher rather than each calling
- * `setRequestHandler` and clobbering the other.
+ * The combined tools/list + tools/call handlers.
  *
  * Tool *descriptors* (the names + schemas served by tools/list)
  * are imported statically — they're tiny pure-data modules. Tool
@@ -149,13 +128,10 @@ const ALL_TOOLS = [
 	...STATION_TOOLS,
 	...SCHEDULER_TOOLS,
 ];
-const TOOL_NAMES = new Set(ALL_TOOLS.map((t) => t.name));
 
-export function registerAllTools(server: Server): void {
-	server.setRequestHandler(ListToolsRequestSchema, async () => ({
-		tools: ALL_TOOLS,
-	}));
+const TOOLS_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 
+export function toolsHandlers(): ToolsHandlers {
 	let handlersPromise: Promise<{
 		dispatchDocs: typeof import("./tools/docs.js").dispatchDocs;
 		dispatchIntrospect: typeof import("./tools/introspect.js").dispatchIntrospect;
@@ -209,14 +185,25 @@ export function registerAllTools(server: Server): void {
 		return handlersPromise;
 	};
 
-	server.setRequestHandler(
-		CallToolRequestSchema,
-		async (req: CallToolHandlerArgs) => {
-			const { name, arguments: args = {} } = req.params;
+	return {
+		list: () => ({ tools: ALL_TOOLS }),
+		call: async ({ name, arguments: args }) => {
 			// Not finding the tool is a protocol error (MCP spec, tools > Error
 			// Handling), answered before anything waits on the docs index.
-			if (!TOOL_NAMES.has(name)) {
+			const tool = TOOLS_BY_NAME.get(name);
+			if (!tool) {
 				throw new McpError(ErrorCode.InvalidParams, `Unknown tool: ${name}`);
+			}
+			// Arguments that do not fit the advertised schema never reach the
+			// handler. Reported as a tool error, not a protocol one, so the model
+			// reads what was wrong and can call again (MCP 2025-11-25, tools >
+			// Error Handling: input validation errors are tool execution errors).
+			const problems = validateArguments(tool.inputSchema, args);
+			if (problems.length > 0) {
+				return jsonContent({
+					error: `invalid arguments for ${name}`,
+					problems,
+				});
 			}
 			let root: string;
 			try {
@@ -280,17 +267,14 @@ export function registerAllTools(server: Server): void {
 				return errorContent(`Tool '${name}' failed: ${redactPaths(message)}`);
 			}
 		},
-	);
+	};
 }
 
 interface Closeable {
 	close(): Promise<void>;
 }
 
-function installSignalHandlers(
-	transportRef: { current: Closeable | null },
-	serverRef: { current: Closeable | null },
-): void {
+function installSignalHandlers(serverRef: { current: Closeable | null }): void {
 	uninstallEarlyHandlers();
 	let shuttingDown = false;
 	const shutdown = (signal: string): void => {
@@ -306,10 +290,10 @@ function installSignalHandlers(
 		}, SHUTDOWN_TIMEOUT_MS);
 		hardStop.unref();
 
-		// If the signal arrived before transport/server were assigned
+		// If the signal arrived before the server was assigned
 		// (very fast SIGTERM during boot), nothing to close — just
 		// exit cleanly. The Node default would have been exit 143.
-		const closeables = [transportRef.current, serverRef.current].filter(
+		const closeables = [serverRef.current].filter(
 			(c): c is Closeable => c !== null,
 		);
 		if (closeables.length === 0) {

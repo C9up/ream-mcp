@@ -5,8 +5,7 @@
  * Why: ESM hoists static imports to the top of every module, so by
  * the time `bootstrap()` (and its `installSignalHandlers` call) has
  * a chance to run, several hundred milliseconds of `import` work
- * may already have elapsed (`@modelcontextprotocol/sdk`,
- * `ts-morph`, etc.). A SIGTERM that arrives in that window would
+ * may already have elapsed (`ts-morph` alone costs ~300ms). A SIGTERM that arrives in that window would
  * trigger Node's default action — terminate with exit code 143 —
  * because no handler is registered yet.
  *
