@@ -1,0 +1,29 @@
+# pnpm settings for this repository's standalone CI install.
+#
+# CI copies this file to pnpm-workspace.yaml right before `pnpm install`.
+# pnpm 11 and later read their settings only from pnpm-workspace.yaml, and a
+# pnpm-workspace.yaml committed in this directory would make the package a
+# workspace root of its own inside the ream-dev monorepo, where the
+# workspace's file applies instead. Keep the two in step.
+
+# How long a published version waits before CI installs it, in minutes: one
+# week, as in the workspace. A malicious release is usually caught and pulled
+# within days. Our own packages are released by this workspace and consumed
+# the day they go out.
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - "@c9up/*"
+  # A security fix younger than the release age, one exact version: ts-morph
+  # 28 asks for @ts-morph/common ~0.29.0, and 0.29.0 holds minimatch ^10, with
+  # GHSA-g3hv-75wg-m249 and no fixed 10.x; 0.29.1 (2026-11-16) moves to
+  # minimatch ^11. Inert from 2026-11-23, when 0.29.1 is a week old: remove it then.
+  - "@ts-morph/common@0.29.1"
+
+# The optional @c9up peers come from the host application (see .npmrc, which
+# pnpm 11+ no longer reads for this setting).
+autoInstallPeers: false
+
+# Dependencies allowed to run an install script; pnpm refuses the install
+# when any other one has a script, so a new one is a decision, not a default.
+allowBuilds:
+  "esbuild": true # the bundler vite and tsx run; its install script checks the platform binary
