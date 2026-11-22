@@ -42,6 +42,7 @@ export const INKER_TOOLS: ToolDescriptor[] = [
 			properties: {
 				template: {
 					type: "string",
+					minLength: 1,
 					description:
 						"Template name relative to the templates root, e.g. `pages/welcome`.",
 				},

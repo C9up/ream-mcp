@@ -52,6 +52,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 			properties: {
 				id: {
 					type: "string",
+					pattern: "^\\d+\\.\\d+$",
 					description: "Story id like `33.7`. Required.",
 				},
 			},
@@ -69,6 +70,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 			properties: {
 				requirement_id: {
 					type: "string",
+					minLength: 1,
 					description:
 						"Requirement id like `FR-12` or `NFR-3.5`. Plain-text match.",
 				},
@@ -114,6 +116,7 @@ export const BMAD_TOOLS: ToolDescriptor[] = [
 			properties: {
 				id: {
 					type: "string",
+					pattern: "^[a-z0-9][a-z0-9-]+$",
 					description:
 						"Story id like `33-8-bmad-bridge-and-doctor` (the sprint-status.yaml key). Required.",
 				},

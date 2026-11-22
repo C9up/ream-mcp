@@ -19,6 +19,7 @@ export const SUPPORTED_KEYWORDS = new Set([
 	"minimum",
 	"maximum",
 	"pattern",
+	"minLength",
 	"items",
 	"default",
 	"description",
@@ -78,6 +79,14 @@ function check(
 		}
 		if (typeof schema.maximum === "number" && value > schema.maximum) {
 			problems.push(`${at} must be <= ${schema.maximum}`);
+		}
+	}
+	if (typeof value === "string" && typeof schema.minLength === "number") {
+		// Counted in code points, as JSON Schema counts a string's length.
+		if ([...value].length < schema.minLength) {
+			problems.push(
+				`${at} must be at least ${schema.minLength} character${schema.minLength === 1 ? "" : "s"} long`,
+			);
 		}
 	}
 	if (typeof value === "string" && typeof schema.pattern === "string") {

@@ -291,6 +291,25 @@ describe("validateArguments", () => {
 		]);
 	});
 
+	it("refuses a string shorter than minLength, counted in code points", () => {
+		const short = {
+			type: "object",
+			properties: {
+				q: { type: "string", minLength: 1 },
+				w: { type: "string", minLength: 2 },
+			},
+		};
+		expect(validateArguments(short, { q: "" })).toEqual([
+			"q must be at least 1 character long",
+		]);
+		expect(validateArguments(short, { w: "\u{1F600}" })).toEqual([
+			"w must be at least 2 characters long",
+		]);
+		expect(
+			validateArguments(short, { q: "a", w: "\u{1F600}\u{1F600}" }),
+		).toEqual([]);
+	});
+
 	it("counts only own properties as present", () => {
 		expect(
 			validateArguments(schema, JSON.parse('{"__proto__":{"name":"A"}}')),

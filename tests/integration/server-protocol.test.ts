@@ -214,16 +214,24 @@ describe("tools/call failures", () => {
 		expect(JSON.parse(text(result)).problems).toEqual(["query is required"]);
 	});
 
-	it("reports a thrown failure without stack frames or absolute paths", async () => {
-		// The schema allows any number >= 1; the native side wants an integer,
-		// so a fractional limit gets past validation and throws inside the tool.
+	it("refuses a fractional limit before the tool runs", async () => {
 		const result = await within(
 			callTool("docs.search", { query: "x", limit: 1.5 }),
-			10_000,
+			3000,
 		);
 		expect(result.isError).toBe(true);
+		expect(JSON.parse(text(result)).problems).toEqual([
+			"limit must be integer, got number",
+		]);
+	});
+
+	it("reports a thrown failure without stack frames or absolute paths", async () => {
+		// Either `id` or `topic` is needed, which the schema cannot say: a
+		// top-level anyOf is refused by Claude's tool API, so the tool throws.
+		const result = await within(callTool("docs.get", {}), 10_000);
+		expect(result.isError).toBe(true);
 		const body = text(result);
-		expect(body).toContain("docs.search");
+		expect(body).toContain("provide either `id` or `topic`");
 		expect(body).not.toMatch(/\n\s+at /);
 		expect(body).not.toContain(process.cwd());
 		expect(body).not.toMatch(/\/[^\s/]+\/[^\s/]+\.ts/);

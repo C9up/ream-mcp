@@ -18,7 +18,11 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 		inputSchema: {
 			type: "object",
 			properties: {
-				query: { type: "string", description: "Free-form text query." },
+				query: {
+					type: "string",
+					minLength: 1,
+					description: "Free-form text query.",
+				},
 				package: {
 					type: "string",
 					description:
@@ -30,7 +34,7 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 					description: "Optional filter by chunk kind.",
 				},
 				limit: {
-					type: "number",
+					type: "integer",
 					minimum: 1,
 					maximum: 50,
 					description: "Max hits (default 10, hard cap 50).",
@@ -84,6 +88,7 @@ export const DOCS_TOOLS: ToolDescriptor[] = [
 			properties: {
 				requirement_id: {
 					type: "string",
+					minLength: 1,
 					description: "e.g. `FR37`, `MISS-24`, `Story 32.7`, `Epic 36`.",
 				},
 			},
