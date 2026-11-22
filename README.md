@@ -65,7 +65,7 @@ not match. Then launch the server with:
 | Launch env | Meaning |
 |---|---|
 | `REAM_MCP_EMBEDDINGS=1` | load the downloaded model (checked again on every load) |
-| `ORT_DYLIB_PATH=/abs/path/libonnxruntime.so` | the ONNX Runtime library to load; required, never looked up on the library search path |
+| `ORT_DYLIB_PATH=/abs/path/libonnxruntime.so` | the ONNX Runtime library to load, version 1.24 or newer; required, never looked up on the library search path |
 | `REAM_MCP_DISABLE_EMBEDDINGS=1` | force embeddings off, whatever else is set |
 
 The server itself never fetches anything: a missing or altered model leaves

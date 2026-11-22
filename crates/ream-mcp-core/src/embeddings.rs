@@ -267,10 +267,7 @@ fn load_model(dir: &Path, ort: Option<OsString>) -> Result<TextEmbedding, String
     let tokenizer_config_file = next()?;
     let tokenizer_file = next()?;
     let onnx = next()?;
-    // Once per process; a second call keeps the library already loaded.
-    ort::init_from(&ort)
-        .map_err(|e| format!("ONNX Runtime: {e}"))?
-        .commit();
+    let environment = ort_environment(&ort)?;
     let model = UserDefinedEmbeddingModel::new(
         onnx,
         TokenizerFiles {
@@ -281,8 +278,28 @@ fn load_model(dir: &Path, ort: Option<OsString>) -> Result<TextEmbedding, String
         },
     )
     .with_pooling(Pooling::Cls);
-    TextEmbedding::try_new_from_user_defined(model, InitOptionsUserDefined::new())
-        .map_err(|e| e.to_string())
+    TextEmbedding::try_new_from_user_defined(
+        model,
+        InitOptionsUserDefined::new().with_environment(environment),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// The process's ONNX Runtime environment, built once from the library at
+/// `ort`. ort allows one environment per process and refuses a second
+/// `build()` even after the first is dropped, so a retry after a failed model
+/// load must reuse this one rather than build again. Loading the library also
+/// happens once: a later call with another path keeps the first library.
+fn ort_environment(ort: &Path) -> Result<ort::environment::Environment, String> {
+    static ENVIRONMENT: OnceCell<ort::environment::Environment> = OnceCell::new();
+    ENVIRONMENT
+        .get_or_try_init(|| {
+            ort::init_from(ort)
+                .map_err(|e| format!("ONNX Runtime: {e}"))?
+                .build()
+                .map_err(|e| format!("ONNX Runtime: {e}"))
+        })
+        .cloned()
 }
 
 /// Publish an outcome. A poisoned lock is not worth panicking over: the next
