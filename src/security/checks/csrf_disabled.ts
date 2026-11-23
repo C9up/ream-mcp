@@ -31,7 +31,7 @@ export const csrfDisabled: CheckDefinition = {
 	id: "csrf_disabled",
 	severity: "high",
 	hint: "remove the `csrf: false` (or `csrf: { enabled: false }`) opt-out from the middleware options; the framework default is on for a reason.",
-	docsUrl: "docs:/security/csrf.md",
+	docsUrl: "https://r-eam.com/en/guides/security/csrf",
 	run(ctx) {
 		const findings: RawFinding[] = [];
 		ctx.sf.forEachDescendant((node) => {

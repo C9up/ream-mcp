@@ -12,7 +12,7 @@
  * which bypasses the prepared-statement placeholder contract and
  * lets caller-controlled strings reach the SQL engine raw. The
  * canonical fix is documented in
- * `docs:/security/sql-injection.md`.
+ * `https://r-eam.com/en/guides/database/orm/security#raw-sql-rules`.
  *
  * Heuristics, in priority order:
  *   1. `CallExpression` whose callee is a property access of
@@ -45,7 +45,7 @@ export const sqlInterpolation: CheckDefinition = {
 	id: "sql_interpolation",
 	severity: "high",
 	hint: "use prepared-statement placeholders (?, $1, :name) and pass the dynamic value as a bound parameter instead of interpolating it into the SQL string.",
-	docsUrl: "docs:/security/sql-injection.md",
+	docsUrl: "https://r-eam.com/en/guides/database/orm/security#raw-sql-rules",
 	run(ctx) {
 		const findings: RawFinding[] = [];
 		ctx.sf.forEachDescendant((node) => {

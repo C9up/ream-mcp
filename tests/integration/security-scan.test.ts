@@ -110,12 +110,12 @@ describe("security.scan", () => {
 			},
 		]);
 		// Each finding carries a 16-hex-char id + non-empty hint +
-		// docs:-prefixed docsUrl, and ids are pairwise distinct.
+		// docsUrl on the published docs, and ids are pairwise distinct.
 		const ids = new Set<string>();
 		for (const f of ok.findings) {
 			expect(f.id).toMatch(/^[0-9a-f]{16}$/);
 			expect(f.hint.length).toBeGreaterThan(0);
-			expect(f.docsUrl).toMatch(/^docs:/);
+			expect(f.docsUrl).toMatch(/^https:\/\/r-eam\.com\/en\/guides\//);
 			ids.add(f.id);
 		}
 		expect(ids.size).toBe(ok.findings.length);

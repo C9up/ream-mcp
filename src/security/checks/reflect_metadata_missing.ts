@@ -32,7 +32,7 @@ export const reflectMetadataMissing: CheckDefinition = {
 	id: "reflect_metadata_missing",
 	severity: "medium",
 	hint: 'add `import "reflect-metadata";` as the FIRST line of the entry file so the polyfill loads before any decorator-using module is evaluated.',
-	docsUrl: "docs:/security/reflect-metadata.md",
+	docsUrl: "https://r-eam.com/en/guides/concepts/lifecycle",
 	run(ctx) {
 		if (!ctx.entryFile) return [];
 		const norm = ctx.relPath.replace(/\\/g, "/");
