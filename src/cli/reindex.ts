@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * `ream-mcp reindex` — drives the Rust corpus indexer from the CLI.
+ * `ream-mcp-reindex` — drives the Rust corpus indexer from the CLI.
  *
- *   ream-mcp reindex                   # incremental
- *   ream-mcp reindex --full            # drop + rebuild
- *   ream-mcp reindex --download-model  # fetch the embeddings model, then exit
+ *   ream-mcp-reindex                   # incremental
+ *   ream-mcp-reindex --full            # drop + rebuild
+ *   ream-mcp-reindex --download-model  # fetch the embeddings model, then exit
  *
  * `--download-model` is the only path that fetches the embeddings model: it
  * says what it fetches and from where, checks every file against the SHA-256
