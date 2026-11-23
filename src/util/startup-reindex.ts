@@ -18,7 +18,7 @@
  * will surface the underlying error to the LLM.
  */
 
-import { core } from "../../index.js";
+import { core } from "../native/core.js";
 import { describeIndexStats, parseIndexStats } from "./index-stats.js";
 import { detectProjectRoot } from "./project-root.js";
 

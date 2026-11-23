@@ -25,6 +25,7 @@
 import { relative } from "node:path";
 import type { Project, SourceFile } from "ts-morph";
 import { Node, SyntaxKind } from "ts-morph";
+import { E_REAM_MCP_INVALID_ARGUMENT } from "../errors.js";
 
 import { eachSourceFile } from "./ts-static-parser.js";
 
@@ -76,12 +77,18 @@ export function findDuplicates(
 	root: string,
 	opts: DupOptions,
 ): DupResult {
-	if (opts.minTokens < 1) throw new Error("minTokens must be >= 1");
+	if (opts.minTokens < 1)
+		throw new E_REAM_MCP_INVALID_ARGUMENT(["minTokens must be >= 1"]);
 	if (opts.minTokens > MAX_MIN_TOKENS)
-		throw new Error(`minTokens must be <= ${MAX_MIN_TOKENS}`);
-	if (opts.minLines < 1) throw new Error("minLines must be >= 1");
+		throw new E_REAM_MCP_INVALID_ARGUMENT([
+			`minTokens must be <= ${MAX_MIN_TOKENS}`,
+		]);
+	if (opts.minLines < 1)
+		throw new E_REAM_MCP_INVALID_ARGUMENT(["minLines must be >= 1"]);
 	if (opts.minLines > MAX_MIN_LINES)
-		throw new Error(`minLines must be <= ${MAX_MIN_LINES}`);
+		throw new E_REAM_MCP_INVALID_ARGUMENT([
+			`minLines must be <= ${MAX_MIN_LINES}`,
+		]);
 
 	const skipped: string[] = [];
 	const fileTokens = new Map<string, NormalizedToken[]>();

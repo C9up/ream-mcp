@@ -14,7 +14,8 @@
  * clean exit instead of process termination at exit code 143.
  */
 
-import { core } from "../index.js";
+import { E_REAM_MCP_NATIVE_UNAVAILABLE } from "./errors.js";
+import { core } from "./native/core.js";
 import { validateArguments } from "./protocol/arguments.js";
 import { ErrorCode, McpError } from "./protocol/jsonrpc.js";
 import { McpServer, type ToolsHandlers } from "./protocol/server.js";
@@ -70,9 +71,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<void> {
 	if (!options.skipNapiHealthCheck) {
 		const rustVersion = core.version();
 		if (typeof rustVersion !== "string" || rustVersion.length === 0) {
-			throw new Error(
-				`ream-mcp: core.version() returned ${JSON.stringify(rustVersion)} — Rust binary may be missing or incompatible. Try \`pnpm --filter @c9up/ream-mcp build:napi\`.`,
-			);
+			throw new E_REAM_MCP_NATIVE_UNAVAILABLE([JSON.stringify(rustVersion)]);
 		}
 		process.stderr.write(`[ream-mcp] core ${rustVersion} loaded\n`);
 	}

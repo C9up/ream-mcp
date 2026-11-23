@@ -36,7 +36,7 @@ export const INKER_TOOLS: ToolDescriptor[] = [
 		name: "inker.render_test",
 		annotations: READ_ONLY,
 		description:
-			"Render a single `.inker` template against a JSON data object using @c9up/inker's `Templates#render`. NO canonical helpers are wired (t/csrfField/url/asset all throw), so this is for templates that don't depend on the runtime context. Returns the rendered HTML on success, or `{error, hint, line, column}` on a typed InkerRenderError.",
+			"Render a single `.inker` template against a JSON data object using @c9up/inker's `Templates#render`. NO canonical helpers are wired (t/csrfField/url/asset all throw), so this is for templates that don't depend on the runtime context. Returns the rendered HTML on success, or `{error, hint, line, column}` on a typed inker error (an `InkerError`, or one of `errors.E_INKER_*`).",
 		inputSchema: {
 			type: "object",
 			properties: {

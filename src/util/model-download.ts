@@ -14,6 +14,12 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import {
+	E_REAM_MCP_MODEL_DOWNLOAD_FAILED,
+	E_REAM_MCP_MODEL_INTEGRITY,
+	E_REAM_MCP_NATIVE_MISMATCH,
+	E_REAM_MCP_PATH_ESCAPE,
+} from "../errors.js";
 import { isRecord } from "./guards.js";
 
 export interface ModelFileSpec {
@@ -61,9 +67,9 @@ export function parseModelManifest(json: string): ModelManifest {
 		parsed.files.length === 0 ||
 		!parsed.files.every(isModelFileSpec)
 	) {
-		throw new Error(
+		throw new E_REAM_MCP_NATIVE_MISMATCH([
 			"unexpected embeddings model manifest from the native core",
-		);
+		]);
 	}
 	return {
 		name: parsed.name,
@@ -79,7 +85,9 @@ function destination(dir: string, rel: string): string {
 	const dest = resolve(dir, rel);
 	const back = relative(dir, dest);
 	if (back === "" || back.startsWith("..") || isAbsolute(back)) {
-		throw new Error(`model file path escapes the model directory: ${rel}`);
+		throw new E_REAM_MCP_PATH_ESCAPE([
+			`model file path escapes the model directory: ${rel}`,
+		]);
 	}
 	return dest;
 }
@@ -117,7 +125,11 @@ async function fetchOne(
 ): Promise<void> {
 	const response = await fetcher(file.url);
 	if (!response.ok || response.body === null) {
-		throw new Error(`${file.path}: HTTP ${response.status} from ${file.url}`);
+		throw new E_REAM_MCP_MODEL_DOWNLOAD_FAILED([
+			file.path,
+			response.status,
+			file.url,
+		]);
 	}
 	const partial = `${dest}.partial`;
 	await mkdir(dirname(dest), { recursive: true });
@@ -128,21 +140,26 @@ async function fetchOne(
 		for await (const chunk of response.body) {
 			received += chunk.byteLength;
 			if (received > file.bytes) {
-				throw new Error(
-					`${file.path}: more than the pinned ${file.bytes} bytes`,
-				);
+				throw new E_REAM_MCP_MODEL_INTEGRITY([
+					file.path,
+					`more than the pinned ${file.bytes} bytes`,
+				]);
 			}
 			hash.update(chunk);
 			await handle.write(chunk);
 		}
 		await handle.close();
 		if (received !== file.bytes) {
-			throw new Error(
-				`${file.path}: ${received} bytes, expected ${file.bytes}`,
-			);
+			throw new E_REAM_MCP_MODEL_INTEGRITY([
+				file.path,
+				`${received} bytes, expected ${file.bytes}`,
+			]);
 		}
 		if (hash.digest("hex") !== file.sha256) {
-			throw new Error(`${file.path}: does not match its pinned SHA-256`);
+			throw new E_REAM_MCP_MODEL_INTEGRITY([
+				file.path,
+				"does not match its pinned SHA-256",
+			]);
 		}
 		await rename(partial, dest);
 	} catch (err) {

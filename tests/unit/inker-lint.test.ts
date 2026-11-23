@@ -80,7 +80,8 @@ describe("inker.list_templates > lint", () => {
 					if (source.includes("@if") && !source.includes("@endif")) {
 						const err = new Error("Unclosed @if in " + name);
 						err.code = "E_INKER_UNCLOSED_BLOCK_TAG";
-						err.context = { line: 1, column: 1 };
+						err.line = 1;
+						err.col = 1;
 						throw err;
 					}
 				}

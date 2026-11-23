@@ -3,6 +3,7 @@
  * negotiation, notifications, cancellation, and the argument check.
  */
 
+import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -48,6 +49,16 @@ function connect(tools: ToolsHandlers = echo): TestClient {
 		new McpServer({ name: "test", version: "1.2.3" }, tools),
 	);
 }
+
+describe("McpServer.connect", () => {
+	it("refuses a second connection to the same server", () => {
+		const server = new McpServer({ name: "test", version: "1.2.3" }, echo);
+		new TestClient(server);
+		expect(() => server.connect(new PassThrough(), new PassThrough())).toThrow(
+			expect.objectContaining({ code: "E_REAM_MCP_ALREADY_CONNECTED" }),
+		);
+	});
+});
 
 describe("readMessage", () => {
 	it("reads requests and notifications", () => {

@@ -24,11 +24,21 @@ describe("parseTrailingJson — strict last-line parser", () => {
 		// upward looking for an earlier valid line.
 		const stdout =
 			'first\n{"files":[],"warnings":[]}\nsome trailing log line\n';
-		expect(() => parseTrailingJson(stdout)).toThrow(/not valid JSON/i);
+		expect(() => parseTrailingJson(stdout)).toThrow(
+			expect.objectContaining({
+				code: "E_REAM_MCP_CLI_OUTPUT_INVALID",
+				message: expect.stringMatching(/not valid JSON/i),
+			}),
+		);
 	});
 
 	it("rejects when trailing line is JSON but not an object", () => {
-		expect(() => parseTrailingJson("progress\n42\n")).toThrow(/not an object/i);
+		expect(() => parseTrailingJson("progress\n42\n")).toThrow(
+			expect.objectContaining({
+				code: "E_REAM_MCP_CLI_OUTPUT_INVALID",
+				message: expect.stringMatching(/not an object/i),
+			}),
+		);
 		expect(() => parseTrailingJson('progress\n"string"\n')).toThrow(
 			/not an object/i,
 		);
@@ -41,7 +51,12 @@ describe("parseTrailingJson — strict last-line parser", () => {
 	});
 
 	it("throws when no non-empty line is present", () => {
-		expect(() => parseTrailingJson("\n\n   \n")).toThrow(/parseable JSON/i);
+		expect(() => parseTrailingJson("\n\n   \n")).toThrow(
+			expect.objectContaining({
+				code: "E_REAM_MCP_CLI_OUTPUT_INVALID",
+				message: expect.stringMatching(/parseable JSON/i),
+			}),
+		);
 	});
 });
 

@@ -3,6 +3,7 @@
  * (JSON), checked field by field.
  */
 
+import { E_REAM_MCP_NATIVE_MISMATCH } from "../errors.js";
 import { isRecord } from "./guards.js";
 
 export interface IndexStats {
@@ -28,12 +29,16 @@ const FIELDS = [
 export function parseIndexStats(json: string): IndexStats {
 	const parsed: unknown = JSON.parse(json);
 	if (!isRecord(parsed)) {
-		throw new Error("unexpected index statistics from the native core");
+		throw new E_REAM_MCP_NATIVE_MISMATCH([
+			"unexpected index statistics from the native core",
+		]);
 	}
 	const count = (field: (typeof FIELDS)[number]): number => {
 		const value = parsed[field];
 		if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-			throw new Error(`unexpected index statistics: ${field}`);
+			throw new E_REAM_MCP_NATIVE_MISMATCH([
+				`unexpected index statistics: ${field}`,
+			]);
 		}
 		return value;
 	};

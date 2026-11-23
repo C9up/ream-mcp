@@ -100,7 +100,12 @@ describe("findDuplicates", () => {
 		const project = inMemoryProject({ "/a.ts": "export const x = 1;\n" });
 		expect(() =>
 			findDuplicates(project, "/", { minTokens: 0, minLines: 1 }),
-		).toThrow(/minTokens must be >= 1/);
+		).toThrow(
+			expect.objectContaining({
+				code: "E_REAM_MCP_INVALID_ARGUMENT",
+				message: expect.stringMatching(/minTokens must be >= 1/),
+			}),
+		);
 		expect(() =>
 			findDuplicates(project, "/", { minTokens: 1, minLines: 0 }),
 		).toThrow(/minLines must be >= 1/);

@@ -25,6 +25,7 @@
 
 import { lstatSync } from "node:fs";
 import { join } from "node:path";
+import { E_REAM_MCP_INTERNAL } from "../errors.js";
 import {
 	type RunResult,
 	runReamCli,
@@ -305,7 +306,7 @@ function buildCliArgs(
 		case "migration":
 			return ["make:migration", className, ...flags];
 		default:
-			throw new Error(`unreachable kind: ${kind}`);
+			throw new E_REAM_MCP_INTERNAL([`unreachable kind: ${kind}`]);
 	}
 }
 

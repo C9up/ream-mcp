@@ -18,6 +18,7 @@
  *     (project root or system tmpdir). Arbitrary absolute paths are
  *     rejected to prevent lateral-movement via env injection.
  */
+
 import { spawn } from "node:child_process";
 import { mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,6 +28,10 @@ import {
 	sep as pathSep,
 	resolve as resolvePath,
 } from "node:path";
+import {
+	E_REAM_MCP_CLI_NOT_FOUND,
+	E_REAM_MCP_SHELL_DISALLOWED,
+} from "../errors.js";
 import { redactPaths } from "./redact.js";
 
 export const MAX_OUTPUT_BYTES = 32_768;
@@ -193,19 +198,12 @@ export async function runReamCli(
 	opts: RunOptions = {},
 ): Promise<RunResult> {
 	if (shellOutDisallowed()) {
-		throw new Error(
-			"ream-mcp: REAM_MCP_NO_SHELL=1 — refusing to spawn the ream binary in this environment.",
-		);
+		throw new E_REAM_MCP_SHELL_DISALLOWED();
 	}
 
 	const bin = resolveReamBin(root);
 	if (!bin) {
-		throw new Error(
-			"ream-mcp: cannot locate the `ream` binary. " +
-				"Looked at $REAM_BIN (must be inside project root or tmpdir) " +
-				"and <root>/node_modules/.bin/ream. " +
-				"Run `pnpm install` in the project, or set REAM_BIN to a valid path.",
-		);
+		throw new E_REAM_MCP_CLI_NOT_FOUND();
 	}
 
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;

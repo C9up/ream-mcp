@@ -10,7 +10,12 @@
  * indexing timing, sqlite-vec status, etc. goes to stderr.
  */
 
-import { core } from "../../index.js";
+import {
+	E_REAM_MCP_INTERNAL,
+	E_REAM_MCP_INVALID_ARGUMENT,
+	E_REAM_MCP_NATIVE_MISMATCH,
+} from "../errors.js";
+import { core } from "../native/core.js";
 import { isRecord } from "../util/guards.js";
 import { projectPath } from "../util/project-path.js";
 import { indexReady } from "../util/startup-reindex.js";
@@ -62,7 +67,7 @@ export async function dispatchDocs(
 		case "docs.audit_drift":
 			return handleAuditDrift(root);
 		default:
-			throw new Error(`Unknown docs tool: ${name}`);
+			throw new E_REAM_MCP_INTERNAL([`Unknown docs tool: ${name}`]);
 	}
 }
 
@@ -81,7 +86,9 @@ function handleGet(root: string, args: Record<string, unknown>) {
 	const topic = typeof args.topic === "string" ? args.topic : null;
 	const key = id || topic;
 	if (!key) {
-		throw new Error("docs.get: provide either `id` or `topic`.");
+		throw new E_REAM_MCP_INVALID_ARGUMENT([
+			"docs.get: provide either `id` or `topic`.",
+		]);
 	}
 	const json = core.getChunk(root, key, !id);
 	if (json == null) return null;
@@ -93,7 +100,9 @@ async function handleExplain(root: string, args: Record<string, unknown>) {
 	const file = typeof args.file === "string" ? args.file : null;
 	const query = symbol ?? file;
 	if (!query) {
-		throw new Error("docs.explain: provide either `symbol` or `file`.");
+		throw new E_REAM_MCP_INVALID_ARGUMENT([
+			"docs.explain: provide either `symbol` or `file`.",
+		]);
 	}
 	// Story 33.3: try ts-morph symbol lookup first when caller passed
 	// `symbol`. Falls through to BM25 on miss so `file` queries and
@@ -140,7 +149,9 @@ function parseTrace(json: string): { sites: ImplSite[]; truncated: boolean } {
 		!Array.isArray(parsed.sites) ||
 		typeof parsed.truncated !== "boolean"
 	) {
-		throw new Error("docs.trace: unexpected answer from the native core.");
+		throw new E_REAM_MCP_NATIVE_MISMATCH([
+			"docs.trace: unexpected answer from the native core.",
+		]);
 	}
 	return {
 		sites: parsed.sites.filter(isImplSite),
@@ -177,7 +188,9 @@ function handleAuditDrift(root: string) {
 function requireString(args: Record<string, unknown>, key: string): string {
 	const v = args[key];
 	if (typeof v !== "string" || v.length === 0) {
-		throw new Error(`Missing or empty '${key}' (string required).`);
+		throw new E_REAM_MCP_INVALID_ARGUMENT([
+			`Missing or empty '${key}' (string required).`,
+		]);
 	}
 	return v;
 }

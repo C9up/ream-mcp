@@ -24,8 +24,11 @@ import { existsSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
-
 import type { DatabaseAdapter, MigrationRecord } from "@c9up/atlas";
+import {
+	E_REAM_MCP_INVALID_MIGRATION,
+	E_REAM_MCP_PATH_ESCAPE,
+} from "../errors.js";
 
 import {
 	type BridgeResult,
@@ -424,7 +427,9 @@ async function loadDownSql(
 	const dirAbs = resolve(migrationsDir);
 	const fileAbs = resolve(filePath);
 	if (!fileAbs.startsWith(dirAbs + sep) && fileAbs !== dirAbs) {
-		throw new Error(`migration filename escapes migrations directory: ${name}`);
+		throw new E_REAM_MCP_PATH_ESCAPE([
+			`migration filename escapes migrations directory: ${name}`,
+		]);
 	}
 	// `pathToFileURL` produces a valid `file://` URL on every
 	// platform — required for dynamic-import on Windows and
@@ -437,11 +442,17 @@ async function loadDownSql(
 	// `MigrationRunner` would have emitted on the apply path.
 	const instance: unknown = Reflect.construct(MigrationClass, [dialect]);
 	if (!isRecord(instance) || typeof instance.getDownSQL !== "function") {
-		throw new Error(`${name}: the default export is not a migration class`);
+		throw new E_REAM_MCP_INVALID_MIGRATION([
+			name,
+			"the default export is not a migration class",
+		]);
 	}
 	const stmts: unknown = await instance.getDownSQL();
 	if (!Array.isArray(stmts) || !stmts.every((s) => typeof s === "string")) {
-		throw new Error(`${name}: getDownSQL() did not return a list of strings`);
+		throw new E_REAM_MCP_INVALID_MIGRATION([
+			name,
+			"getDownSQL() did not return a list of strings",
+		]);
 	}
 	return stmts.join(";\n") + (stmts.length > 0 ? ";" : "");
 }

@@ -99,7 +99,7 @@ describe("@c9up/ream-mcp published shape", () => {
 		if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
 	});
 
-	it("exports the 3 publishConfig sub-paths and every advertised target lands in the tarball", () => {
+	it("exports the 4 publishConfig sub-paths and every advertised target lands in the tarball", () => {
 		// `--force-local` on win32: GNU tar otherwise reads the `C:` in a Windows
 		// path as a remote host (`host:path`) and fails with "Cannot connect to C:".
 		const tarLocal = process.platform === "win32" ? ["--force-local"] : [];
@@ -113,9 +113,10 @@ describe("@c9up/ream-mcp published shape", () => {
 			throw new Error("tarball package.json shape unexpected");
 		}
 
-		// AC4 — three sub-paths present (import + types shape validated by isPackJson above)
+		// AC4 — four sub-paths present (import + types shape validated by isPackJson above)
 		expect(Object.keys(parsed.exports).sort()).toEqual([
 			".",
+			"./errors",
 			"./napi",
 			"./util/project-root",
 		]);

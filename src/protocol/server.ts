@@ -22,6 +22,7 @@
  */
 
 import type { Readable, Writable } from "node:stream";
+import { E_REAM_MCP_ALREADY_CONNECTED } from "../errors.js";
 
 import {
 	ErrorCode,
@@ -108,7 +109,7 @@ export class McpServer {
 
 	/** Start reading messages from `input` and answering on `output`. */
 	connect(input: Readable, output: Writable): void {
-		if (this.#lines) throw new Error("McpServer is already connected");
+		if (this.#lines) throw new E_REAM_MCP_ALREADY_CONNECTED();
 		this.#lines = new StdioLines(input, output, {
 			line: (text) => {
 				void this.#receive(readMessage(text));

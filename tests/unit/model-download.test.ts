@@ -85,7 +85,10 @@ describe("ream-mcp > model download", () => {
 		const tampered = Buffer.from("the model bytez");
 		await expect(
 			downloadModel(manifest(), serving(tampered), quiet),
-		).rejects.toThrow(/pinned SHA-256/);
+		).rejects.toMatchObject({
+			code: "E_REAM_MCP_MODEL_INTEGRITY",
+			message: expect.stringMatching(/pinned SHA-256/),
+		});
 		expect(readdirSync(join(dir, "onnx"))).toEqual([]);
 	});
 
@@ -93,7 +96,10 @@ describe("ream-mcp > model download", () => {
 		const longer = Buffer.concat([GOOD, Buffer.alloc(1024 * 1024)]);
 		await expect(
 			downloadModel(manifest(), serving(longer), quiet),
-		).rejects.toThrow(/more than the pinned/);
+		).rejects.toMatchObject({
+			code: "E_REAM_MCP_MODEL_INTEGRITY",
+			message: expect.stringMatching(/more than the pinned/),
+		});
 		expect(readdirSync(join(dir, "onnx"))).toEqual([]);
 	});
 
@@ -108,13 +114,19 @@ describe("ream-mcp > model download", () => {
 	it("fails on an HTTP error", async () => {
 		await expect(
 			downloadModel(manifest(), serving(GOOD, 404), quiet),
-		).rejects.toThrow(/HTTP 404/);
+		).rejects.toMatchObject({
+			code: "E_REAM_MCP_MODEL_DOWNLOAD_FAILED",
+			message: expect.stringMatching(/HTTP 404/),
+		});
 	});
 
 	it("refuses a manifest path that leaves the model directory", async () => {
 		await expect(
 			downloadModel(manifest("../escape.onnx"), serving(GOOD), quiet),
-		).rejects.toThrow(/escapes/);
+		).rejects.toMatchObject({
+			code: "E_REAM_MCP_PATH_ESCAPE",
+			message: expect.stringMatching(/escapes/),
+		});
 		expect(requested).toEqual([]);
 		expect(existsSync(join(dir, "..", "escape.onnx"))).toBe(false);
 	});
@@ -148,7 +160,10 @@ describe("ream-mcp > model download", () => {
 			files: [{ ...manifest().files[0], sha256: "x" }],
 		};
 		expect(() => parseModelManifest(JSON.stringify(bad))).toThrow(
-			/unexpected embeddings model manifest/,
+			expect.objectContaining({
+				code: "E_REAM_MCP_NATIVE_MISMATCH",
+				message: expect.stringMatching(/unexpected embeddings model manifest/),
+			}),
 		);
 	});
 });

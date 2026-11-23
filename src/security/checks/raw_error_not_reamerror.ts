@@ -1,11 +1,12 @@
 /**
- * `raw_error_not_reamerror` check (Story 33.7).
+ * `raw_error_not_reamerror` check (the id predates flare and is kept so
+ * callers' `checks` lists keep working).
  *
- * Flags `new Error("...")` inside a controller — the framework's
- * structured error envelope (`ReamError` / `HttpException`
- * subclasses) is what produces consistent JSON responses + status
- * codes. A raw `Error` slips through as a 500 with no structured
- * body.
+ * Flags `new Error("...")` inside a controller: an error declared with
+ * `createError()` or as an `Exception` subclass (re-exported by
+ * `@c9up/ream` from `@c9up/flare`) carries the code and the status that
+ * produce a consistent JSON response. A raw `Error` slips through as a
+ * 500 with no code.
  *
  * Visits every `NewExpression` whose callee is the bare `Error`
  * identifier (per the spec wording — both `throw new Error()`
@@ -26,7 +27,7 @@ const CONTROLLER_DECORATORS = new Set(["Controller", "inject", "Service"]);
 export const rawErrorNotReamerror: CheckDefinition = {
 	id: "raw_error_not_reamerror",
 	severity: "low",
-	hint: "throw a `ReamError` / `HttpException` subclass instead of `new Error(...)` so the framework can render a structured response with the correct status code.",
+	hint: "declare the error with `createError()` (or an `Exception` subclass) from `@c9up/ream` and throw it instead of `new Error(...)`, so the response carries its code and the right status.",
 	docsUrl: "https://reamjs.com/en/guides/basics/exception-handling",
 	run(ctx) {
 		if (!isControllerFile(ctx)) return [];

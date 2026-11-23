@@ -18,6 +18,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
+import { E_REAM_MCP_PROJECT_ROOT_NOT_FOUND } from "../errors.js";
 import { isRecord } from "./guards.js";
 
 export type ProjectRootSource =
@@ -58,11 +59,7 @@ export function detectProjectRoot(cwd: string = process.cwd()): ProjectRoot {
 		dir = next;
 	}
 
-	throw new Error(
-		`ream-mcp: cannot detect a Ream project root walking up from '${cwd}'. ` +
-			`Expected to find one of: reamrc.ts, ream.config.ts, or a package.json with '@c9up/ream' as a dependency. ` +
-			`Set REAM_PROJECT_ROOT=/path/to/project to override.`,
-	);
+	throw new E_REAM_MCP_PROJECT_ROOT_NOT_FOUND([cwd]);
 }
 
 function fileExists(p: string): boolean {

@@ -119,7 +119,9 @@ describe("native index statistics", () => {
 			elapsed_ms: 4,
 		};
 		expect(parseIndexStats(JSON.stringify(good))).toEqual(good);
-		expect(() => parseIndexStats("[]")).toThrow(/unexpected/);
+		expect(() => parseIndexStats("[]")).toThrow(
+			expect.objectContaining({ code: "E_REAM_MCP_NATIVE_MISMATCH" }),
+		);
 		expect(() =>
 			parseIndexStats(JSON.stringify({ ...good, chunks_total: "3" })),
 		).toThrow(/chunks_total/);

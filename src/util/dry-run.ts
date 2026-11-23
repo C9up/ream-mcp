@@ -12,6 +12,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { E_REAM_MCP_CLI_OUTPUT_INVALID } from "../errors.js";
 
 export const MAX_FILE_CONTENT_BYTES = 8_192;
 
@@ -63,23 +64,24 @@ export function parseTrailingJson(stdout: string): Record<string, unknown> {
 		}
 	}
 	if (trailing === null) {
-		throw new Error(
-			"ream-mcp: cli stdout did not contain a parseable JSON object on its last line",
-		);
+		throw new E_REAM_MCP_CLI_OUTPUT_INVALID([
+			"cli stdout did not contain a parseable JSON object on its last line",
+		]);
 	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(trailing);
 	} catch (err) {
 		const detail = err instanceof Error ? err.message : String(err);
-		throw new Error(
-			`ream-mcp: trailing line of cli stdout is not valid JSON: ${detail}`,
+		throw new E_REAM_MCP_CLI_OUTPUT_INVALID(
+			[`trailing line of cli stdout is not valid JSON: ${detail}`],
+			{ cause: err },
 		);
 	}
 	if (!isObject(parsed)) {
-		throw new Error(
-			"ream-mcp: cli stdout trailing line is JSON but not an object",
-		);
+		throw new E_REAM_MCP_CLI_OUTPUT_INVALID([
+			"cli stdout trailing line is JSON but not an object",
+		]);
 	}
 	return parsed;
 }

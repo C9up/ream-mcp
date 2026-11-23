@@ -335,12 +335,16 @@ function extractInkerError(
 		isRecord(err) && typeof err.message === "string"
 			? err.message
 			: String(err);
-	const context =
-		isRecord(err) && isRecord(err.context) ? err.context : undefined;
+	// An `InkerError` carries its position as Edge's `EdgeError` does: `line`
+	// and `col`, 0 when the failure has no line of its own.
 	const line =
-		context && typeof context.line === "number" ? context.line : undefined;
+		isRecord(err) && typeof err.line === "number" && err.line > 0
+			? err.line
+			: undefined;
 	const column =
-		context && typeof context.column === "number" ? context.column : undefined;
+		isRecord(err) && typeof err.col === "number" && err.col > 0
+			? err.col
+			: undefined;
 	return { code, message, line, column };
 }
 

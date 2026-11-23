@@ -81,9 +81,10 @@ describe("runReamCli", () => {
 		process.env.REAM_MCP_NO_SHELL = "1";
 		const stub = writeStub("ream", "process.exit(0);");
 		process.env.REAM_BIN = stub;
-		await expect(runReamCli(tmpRoot, ["info"])).rejects.toThrow(
-			/REAM_MCP_NO_SHELL=1/,
-		);
+		await expect(runReamCli(tmpRoot, ["info"])).rejects.toMatchObject({
+			code: "E_REAM_MCP_SHELL_DISALLOWED",
+			message: expect.stringMatching(/REAM_MCP_NO_SHELL=1/),
+		});
 	});
 
 	it("captures stdout/stderr and propagates exit code", async () => {

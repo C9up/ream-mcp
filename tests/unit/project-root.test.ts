@@ -116,7 +116,10 @@ describe("detectProjectRoot — file markers", () => {
 			JSON.stringify({ name: "demo-app", dependencies: { lodash: "^4" } }),
 		);
 		expect(() => detectProjectRoot(workDir)).toThrow(
-			/cannot detect a Ream project root/,
+			expect.objectContaining({
+				code: "E_REAM_MCP_PROJECT_ROOT_NOT_FOUND",
+				message: expect.stringMatching(/cannot detect a Ream project root/),
+			}),
 		);
 	});
 });

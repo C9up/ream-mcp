@@ -18,6 +18,10 @@
     "./util/project-root": {
       "types": "./src/util/project-root.ts",
       "import": "./src/util/project-root.ts"
+    },
+    "./errors": {
+      "types": "./src/errors.ts",
+      "import": "./src/errors.ts"
     }
   },
   "bin": {
@@ -59,11 +63,16 @@
       "./util/project-root": {
         "types": "./dist/util/project-root.d.ts",
         "import": "./dist/util/project-root.js"
+      },
+      "./errors": {
+        "types": "./dist/errors.d.ts",
+        "import": "./dist/errors.js"
       }
     },
     "access": "public"
   },
   "dependencies": {
+    "@c9up/flare": "^0.1.0",
     "ts-morph": "^28.0.0"
   },
   "peerDependencies": {

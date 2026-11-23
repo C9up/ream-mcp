@@ -15,7 +15,7 @@
  * use). Exits 0 on success, 1 on failure.
  */
 
-import { core } from "../../index.js";
+import { core } from "../native/core.js";
 import { describeIndexStats, parseIndexStats } from "../util/index-stats.js";
 import {
 	describeDownload,
