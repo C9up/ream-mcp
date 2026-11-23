@@ -115,7 +115,7 @@ describe("security.scan", () => {
 		for (const f of ok.findings) {
 			expect(f.id).toMatch(/^[0-9a-f]{16}$/);
 			expect(f.hint.length).toBeGreaterThan(0);
-			expect(f.docsUrl).toMatch(/^https:\/\/r-eam\.com\/en\/guides\//);
+			expect(f.docsUrl).toMatch(/^https:\/\/reamjs\.com\/en\/guides\//);
 			ids.add(f.id);
 		}
 		expect(ids.size).toBe(ok.findings.length);

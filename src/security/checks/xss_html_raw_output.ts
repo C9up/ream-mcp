@@ -26,7 +26,7 @@ export const xssHtmlRawOutput: CheckDefinition = {
 	id: "xss_html_raw_output",
 	severity: "medium",
 	hint: "sanitize dynamic data through the framework's XSS helper (e.g. `escapeHtml(...)`) before embedding it in HTML; reserve raw output for trusted, statically-known strings.",
-	docsUrl: "https://r-eam.com/en/guides/security/xss",
+	docsUrl: "https://reamjs.com/en/guides/security/xss",
 	run(ctx) {
 		const findings: RawFinding[] = [];
 		ctx.sf.forEachDescendant((node) => {

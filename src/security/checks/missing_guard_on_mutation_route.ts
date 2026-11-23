@@ -42,7 +42,7 @@ export const missingGuardOnMutationRoute: CheckDefinition = {
 	id: "missing_guard_on_mutation_route",
 	severity: "high",
 	hint: "decorate the controller class or method with `@UseGuards(AuthGuard)` (or an equivalent role-aware guard) so mutation routes cannot be reached anonymously.",
-	docsUrl: "https://r-eam.com/en/guides/auth/protecting-routes",
+	docsUrl: "https://reamjs.com/en/guides/auth/protecting-routes",
 	run(ctx) {
 		const findings: RawFinding[] = [];
 		const inControllersDir = ctx.relPath

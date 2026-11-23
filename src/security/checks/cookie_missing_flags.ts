@@ -30,7 +30,7 @@ export const cookieMissingFlags: CheckDefinition = {
 	id: "cookie_missing_flags",
 	severity: "low",
 	hint: "set `secure: true` and `sameSite: 'lax'` (or stricter) on every cookie write; explicit `httpOnly: false` should also be removed.",
-	docsUrl: "https://r-eam.com/en/guides/basics/response",
+	docsUrl: "https://reamjs.com/en/guides/basics/response",
 	run(ctx) {
 		const findings: RawFinding[] = [];
 		ctx.sf.forEachDescendant((node) => {

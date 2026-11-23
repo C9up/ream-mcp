@@ -27,7 +27,7 @@ export const rawErrorNotReamerror: CheckDefinition = {
 	id: "raw_error_not_reamerror",
 	severity: "low",
 	hint: "throw a `ReamError` / `HttpException` subclass instead of `new Error(...)` so the framework can render a structured response with the correct status code.",
-	docsUrl: "https://r-eam.com/en/guides/basics/exception-handling",
+	docsUrl: "https://reamjs.com/en/guides/basics/exception-handling",
 	run(ctx) {
 		if (!isControllerFile(ctx)) return [];
 		const findings: RawFinding[] = [];
