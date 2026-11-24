@@ -14,12 +14,34 @@ export const E_REAM_MCP_INVALID_ARGUMENT = createError<[string]>(
 	"E_REAM_MCP_INVALID_ARGUMENT",
 );
 
-/** No Ream project root was found walking up from the working directory. */
-export const E_REAM_MCP_PROJECT_ROOT_NOT_FOUND = createError<[string]>(
-	"ream-mcp: cannot detect a Ream project root walking up from '%s'. " +
-		"Expected to find one of: reamrc.ts, ream.config.ts, or a package.json with '@c9up/ream' as a dependency. " +
+/**
+ * No Ream project root was found walking up from the working directory, or
+ * the one found is not trusted (another user owns it, or it is writable by
+ * group or others). The second argument says which.
+ */
+export const E_REAM_MCP_PROJECT_ROOT_NOT_FOUND = createError<[string, string]>(
+	"ream-mcp: cannot detect a Ream project root walking up from '%s'. %s " +
 		"Set REAM_PROJECT_ROOT=/path/to/project to override.",
 	"E_REAM_MCP_PROJECT_ROOT_NOT_FOUND",
+);
+
+/** No native binary is built for the host's platform and architecture. */
+export const E_REAM_MCP_UNSUPPORTED_PLATFORM = createError<[string]>(
+	"ream-mcp: no native binary is built for %s. " +
+		"Supported: linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64 (Linux binaries target glibc).",
+	"E_REAM_MCP_UNSUPPORTED_PLATFORM",
+);
+
+/**
+ * The native binary for this platform is missing or cannot be loaded. The
+ * message names the file or platform package and Node's error code, and says
+ * what to do; the loader's error is the cause.
+ */
+export const E_REAM_MCP_NATIVE_LOAD_FAILED = createError<
+	[binary: string, reason: string, fix: string]
+>(
+	"ream-mcp: cannot load the native binary '%s' (%s).\n  Fix: %s",
+	"E_REAM_MCP_NATIVE_LOAD_FAILED",
 );
 
 /** The native core did not report a version at startup. */

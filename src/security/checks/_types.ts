@@ -1,5 +1,5 @@
 /**
- * Shared types for `security.scan` checks (Story 33.7).
+ * Shared types for `security.scan` checks.
  *
  * Each check is a small ts-morph visitor co-located in this
  * directory. The dispatcher in `tools/security.ts` walks every
@@ -13,6 +13,7 @@
 import type { Project, SourceFile } from "ts-morph";
 
 import type { SecurityCheckId } from "../../tools/security.descriptors.js";
+import type { ProjectFacts } from "./_project.js";
 
 export type Severity = "critical" | "high" | "medium" | "low";
 
@@ -22,14 +23,13 @@ export interface CheckContext {
 	project: Project;
 	root: string;
 	/**
-	 * Forward-slash relative path of the resolved entry file
-	 * (priority order: `src/main.ts` → `src/index.ts` →
-	 * `src/bootstrap.ts` → `main.ts` → `index.ts`), or `null`
-	 * when the consumer ships none of those. Pre-computed once
-	 * per dispatch so per-file checks don't re-stat. Only the
-	 * `reflect_metadata_missing` check uses it.
+	 * Where a check reports what it could not decide (a controller it could
+	 * not follow, say) instead of guessing. The dispatcher returns them as the
+	 * scan's `knownGaps`, which lowers its `confidence`.
 	 */
-	entryFile: string | null;
+	knownGaps: string[];
+	/** The application as a whole: its ream version, its dependencies. */
+	facts: ProjectFacts;
 }
 
 export interface RawFinding {
@@ -44,6 +44,17 @@ export interface CheckDefinition {
 	hint: string;
 	docsUrl: string;
 	run(ctx: CheckContext): RawFinding[];
+	/**
+	 * Whether a file is one this check is about (a routes file, a blackhole
+	 * config). A check that declares it and reads none of them says so in
+	 * `knownGaps`: an empty answer would otherwise read as a clean one.
+	 */
+	appliesTo?(sf: SourceFile, relPath: string): boolean;
+	/**
+	 * The `knownGaps` line when no file it applies to was read, or `null` when
+	 * the application has nothing to check (blackhole not installed, say).
+	 */
+	nothingRead?(facts: ProjectFacts): string | null;
 }
 
 /**

@@ -1,0 +1,5 @@
+<article>
+  <h1>{{ post.title }}</h1>
+  {{-- xss_html_raw_output: the body is printed raw --}}
+  <div>{{{ post.body }}}</div>
+</article>

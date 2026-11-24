@@ -29,8 +29,8 @@
     "ream-mcp-reindex": "dist/cli/reindex.js"
   },
   "files": [
+    "THIRD-PARTY-NOTICES.md",
     "dist",
-    "index.*.node",
     "index.d.ts",
     "index.js",
     "src"
@@ -39,6 +39,8 @@
     "build:rust": "cargo build --release -p ream-mcp-napi",
     "build:napi": "pnpm build:rust && pnpm build:napi-types && node scripts/copy-napi.mjs",
     "build:napi-types": "node scripts/build-napi-types.mjs",
+    "platforms:sync": "node scripts/platform-packages.mjs",
+    "platforms:check": "node scripts/platform-packages.mjs --check",
     "build:ts": "tsc -p tsconfig.build.json",
     "build": "pnpm build:napi && pnpm build:ts",
     "typecheck": "tsc --noEmit",
@@ -75,6 +77,13 @@
     "@c9up/flare": "^0.1.0",
     "ts-morph": "^28.0.0"
   },
+  "optionalDependencies": {
+    "@c9up/ream-mcp-linux-x64-gnu": "0.1.26",
+    "@c9up/ream-mcp-linux-arm64-gnu": "0.1.26",
+    "@c9up/ream-mcp-darwin-x64": "0.1.26",
+    "@c9up/ream-mcp-darwin-arm64": "0.1.26",
+    "@c9up/ream-mcp-win32-x64-msvc": "0.1.26"
+  },
   "peerDependencies": {
     "@c9up/atlas": "*"
   },
@@ -86,6 +95,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
     "@c9up/atlas": "^0.3.3",
+    "@c9up/inker": "^0.1.24",
     "@types/node": "^22.20.1",
     "@vitest/coverage-v8": "4.1.12",
     "tsx": "^4.23.13",

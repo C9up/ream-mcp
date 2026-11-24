@@ -2,5 +2,12 @@
 	"name": "security-clean-fixture",
 	"version": "0.0.0",
 	"private": true,
-	"type": "module"
+	"type": "module",
+	"imports": {
+		"#controllers/*": "./app/controllers/*.js",
+		"#modules/*": "./app/modules/*.js"
+	},
+	"dependencies": {
+		"@c9up/ream": "^0.2.32"
+	}
 }

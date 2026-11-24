@@ -1,60 +1,45 @@
 /**
- * `sql_interpolation` check (Story 33.7).
+ * `sql_interpolation` check.
  *
- * Flags template-literal interpolation passed to a query method
- * or to a `sql\`\`` tagged template (the Prisma / postgres.js /
- * slonik / drizzle pattern):
+ * Flags a value interpolated into the SQL text of one of atlas's raw-SQL
+ * entry points, instead of passed as a binding:
  *
- *     db.query(`SELECT * FROM users WHERE id = ${userId}`);
- *     db.unsafe`SELECT * FROM users WHERE id = ${userId}`;
- *     sql.unsafe`SELECT * FROM users WHERE id = ${userId}`;
+ *     db.rawQuery(`select * from users where id = ${id}`)
+ *     User.query().whereRaw(`price > ${min}`)
+ *     db.execute('delete from sessions where user_id = ' + userId)
+ *     this.schema.raw(`create index on ${table} (email)`)
  *
- * which bypasses the prepared-statement placeholder contract and
- * lets caller-controlled strings reach the SQL engine raw. The
- * canonical fix is documented in
- * `https://reamjs.com/en/guides/database/orm/security#raw-sql-rules`.
+ * The text reaches the database as SQL, so a caller-controlled string
+ * becomes SQL. atlas takes the values as bindings
+ * (`db.rawQuery('… where id = ?', [id])`, `whereRaw('price > ?', [min])`,
+ * `??` for an identifier).
  *
- * Heuristics, in priority order:
- *   1. `CallExpression` whose callee is a property access of
- *      `query` / `execute` / `raw` / `unsafe`, with at least one
- *      argument that is a `TemplateExpression` carrying ≥ 1
- *      template span (`${...}`).
- *   2. String concatenation (`'... ' + x`) inside the same call.
- *   3. `TaggedTemplateExpression` whose tag matches one of the
- *      known unsafe tags (`sql.unsafe`, `unsafeSql`, `db.unsafe`).
- *      The plain `sql\`\`` tag is NOT flagged — most ORMs treat
- *      it as a safe parameterising tag (Prisma, postgres.js).
+ * Methods: `rawQuery`, `raw`, `execute`, `query` (the connection's
+ * `query(sql, params)`), and every `*Raw` builder method (`whereRaw`,
+ * `orWhereRaw`, `whereNotRaw`, `havingRaw`, `orderByRaw`, `groupByRaw`,
+ * `joinRaw`, …). A call is flagged when one of its arguments is a template
+ * literal with a `${…}` or a string concatenated with a name.
  *
  * Deliberate non-goals: no taint tracking. We do not follow
- * `let q = \`... ${x}\`; db.query(q)` through assignment chains
- * (story scope cut).
+ * `let q = \`... ${x}\`; db.rawQuery(q)` through assignment chains.
  */
 
 import { Node } from "ts-morph";
 import { excerpt, lineOf } from "./_helpers.js";
 import type { CheckDefinition, RawFinding } from "./_types.js";
 
-const QUERY_METHODS = new Set(["query", "execute", "raw", "unsafe"]);
-// Tags that indicate raw / unparameterised SQL even when wrapped
-// as a tagged template. Plain `sql\`\`` is intentionally NOT in
-// this set — Prisma / postgres.js / slonik treat it as the safe
-// parameterising tag.
-const UNSAFE_SQL_TAGS = new Set(["unsafe", "unsafeSql", "rawSql"]);
+const QUERY_METHODS = new Set(["rawQuery", "raw", "execute", "query"]);
+/** atlas's raw builder methods: `whereRaw`, `orHavingRaw`, `joinRaw`… */
+const RAW_BUILDER_METHOD = /^[a-z][A-Za-z]*Raw$/;
 
 export const sqlInterpolation: CheckDefinition = {
 	id: "sql_interpolation",
 	severity: "high",
-	hint: "use prepared-statement placeholders (?, $1, :name) and pass the dynamic value as a bound parameter instead of interpolating it into the SQL string.",
+	hint: "pass the value as a binding instead of writing it into the SQL: `db.rawQuery('select * from users where id = ?', [id])`, `whereRaw('price > ?', [min])`, `??` for an identifier; or use the query builder (`where`, `whereExpr`).",
 	docsUrl: "https://reamjs.com/en/guides/database/orm/security#raw-sql-rules",
 	run(ctx) {
 		const findings: RawFinding[] = [];
 		ctx.sf.forEachDescendant((node) => {
-			if (Node.isTaggedTemplateExpression(node)) {
-				if (isUnsafeSqlTag(node) && hasInterpolation(node.getTemplate())) {
-					findings.push(rawFinding(ctx, node));
-				}
-				return;
-			}
 			if (!Node.isCallExpression(node)) return;
 			const expr = node.getExpression();
 			// Accept both eager (`db.query(...)`) and optional-chained
@@ -70,7 +55,12 @@ export const sqlInterpolation: CheckDefinition = {
 			const methodName = Node.isPropertyAccessExpression(expr)
 				? expr.getName()
 				: extractStringIndex(expr);
-			if (!methodName || !QUERY_METHODS.has(methodName)) return;
+			if (
+				!methodName ||
+				(!QUERY_METHODS.has(methodName) && !RAW_BUILDER_METHOD.test(methodName))
+			) {
+				return;
+			}
 
 			for (const arg of node.getArguments()) {
 				if (Node.isTemplateExpression(arg)) {
@@ -119,23 +109,6 @@ function rawFinding(
 		line,
 		excerpt: excerpt(ctx.sf, line),
 	};
-}
-
-function isUnsafeSqlTag(
-	node: import("ts-morph").TaggedTemplateExpression,
-): boolean {
-	const tag = node.getTag();
-	if (Node.isIdentifier(tag)) {
-		return UNSAFE_SQL_TAGS.has(tag.getText());
-	}
-	if (Node.isPropertyAccessExpression(tag)) {
-		return UNSAFE_SQL_TAGS.has(tag.getName());
-	}
-	return false;
-}
-
-function hasInterpolation(tpl: import("ts-morph").TemplateLiteral): boolean {
-	return Node.isTemplateExpression(tpl) && tpl.getTemplateSpans().length > 0;
 }
 
 function extractStringIndex(

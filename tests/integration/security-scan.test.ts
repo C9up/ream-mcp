@@ -1,8 +1,10 @@
 /**
- * `security.scan` integration tests — Story 33.7.
+ * `security.scan` integration tests.
  *
  * Drives the dispatcher end-to-end against on-disk fixtures
- * (`security-clean` and `security-dirty`). Asserts the wire
+ * (`security-clean` and `security-dirty`, each laid out as a Ream
+ * application: `start/routes.ts`, `app/controllers/`, `config/`,
+ * `resources/templates/`). Asserts the wire
  * shape, deterministic sort order, subset selection, and the
  * fallback when no source files are found.
  */
@@ -64,50 +66,61 @@ describe("security.scan", () => {
 		const ok = result as ScanShape;
 		// Exact count — guards against a check firing twice.
 		expect(ok.findings).toHaveLength(7);
-		// Exact ordered list of (severity, check) pairs — pins the
-		// deterministic sort contract to a snapshot. A stable but
-		// wrong tie-breaker would no longer pass.
+		// Exact ordered list — pins the deterministic sort contract
+		// (severity, then file, then line) to a snapshot.
 		const trace = ok.findings.map((f) => ({
 			severity: f.severity,
 			check: f.check,
 			file: f.file,
+			line: f.line,
 		}));
+		const controller = "app/controllers/posts_controller.ts";
 		expect(trace).toEqual([
 			{
 				severity: "high",
+				check: "sql_interpolation",
+				file: controller,
+				line: 13,
+			},
+			{
+				severity: "high",
 				check: "csrf_disabled",
-				file: "src/bootstrap.ts",
+				file: "config/blackhole.ts",
+				line: 6,
 			},
 			{
 				severity: "high",
 				check: "missing_guard_on_mutation_route",
-				file: "src/controllers/users.ts",
-			},
-			{
-				severity: "high",
-				check: "sql_interpolation",
-				file: "src/controllers/users.ts",
+				file: "start/routes.ts",
+				line: 7,
 			},
 			{
 				severity: "medium",
 				check: "xss_html_raw_output",
-				file: "src/bootstrap.ts",
+				file: controller,
+				line: 21,
 			},
 			{
 				severity: "medium",
-				check: "reflect_metadata_missing",
-				file: "src/main.ts",
+				check: "xss_html_raw_output",
+				file: "resources/templates/posts/show.inker",
+				line: 4,
 			},
 			{
 				severity: "low",
 				check: "cookie_missing_flags",
-				file: "src/controllers/users.ts",
+				file: controller,
+				line: 15,
 			},
 			{
 				severity: "low",
 				check: "raw_error_not_reamerror",
-				file: "src/controllers/users.ts",
+				file: controller,
+				line: 18,
 			},
+		]);
+		expect(ok.knownGaps).toEqual([
+			"template XSS scan is regex-based; an AST-based scanner would cover more",
 		]);
 		// Each finding carries a 16-hex-char id + non-empty hint +
 		// docsUrl on the published docs, and ids are pairwise distinct.

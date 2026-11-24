@@ -11,7 +11,9 @@
  *     loopback / unix-socket server).
  *   - `REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS=1` — additionally required when the
  *     target is production: `REAM_ENV` / `NODE_ENV` say so, OR the database URL
- *     points anywhere that is not provably local. An unset `NODE_ENV` is the
+ *     points anywhere that is not provably local. "Local" is judged on the
+ *     address the driver dials, with the URL and the `PG*` variables read as
+ *     sqlx reads them (`classifyPostgres`, `classifyMysql`). An unset `NODE_ENV` is the
  *     normal state of a server launched by an editor, so the environment alone
  *     can never prove a target safe.
  *
@@ -20,6 +22,7 @@
  * process to collect the SQL — see the `migration.*` descriptors.
  */
 
+import { isIP } from "node:net";
 import { isAbsolute, resolve } from "node:path";
 
 import { isInside, realpathOfNearest } from "./containment.js";
@@ -146,33 +149,119 @@ export function classifyTarget(
 	return NOT_LOCAL;
 }
 
+const LOCAL_SERVER: TargetClass = {
+	local: true,
+	description: "a local database server",
+};
+const REMOTE_SERVER: TargetClass = {
+	local: false,
+	description: "a database host that is not loopback",
+};
+
+/**
+ * Where the driver connects for a PostgreSQL or MySQL URL: a unix socket, or
+ * a TCP host. `null` when it cannot be told (an unparsable URL or address,
+ * which the driver refuses or reads differently).
+ */
+export type DialTarget = { kind: "socket" } | { kind: "tcp"; host: string };
+
+/**
+ * Classify a PostgreSQL or MySQL URL by the address the driver will dial,
+ * read the way sqlx 0.9.1 (under @c9up/atlas) reads it, not by a reading of
+ * our own: a gate that looks at another host than the driver connects to
+ * proves nothing.
+ */
 function classifyServer(url: string): TargetClass {
+	const target = serverDialTarget(url);
+	if (target === null) return NOT_LOCAL;
+	if (target.kind === "socket") return LOCAL_SERVER;
+	return isLoopbackHost(target.host) ? LOCAL_SERVER : REMOTE_SERVER;
+}
+
+export function serverDialTarget(url: string): DialTarget | null {
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
 	} catch {
-		return NOT_LOCAL;
+		return null;
 	}
-	// libpq's `?host=` and mysql's `?socket=` override the authority part.
-	const hostParam = parsed.searchParams.get("host");
-	const socketParam = parsed.searchParams.get("socket");
-	if (hostParam !== null && hostParam.length > 0) {
-		if (hostParam.startsWith("/") || isLoopbackHost(hostParam)) {
-			return { local: true, description: "a local database server" };
+	if (parsed.protocol === "postgres:" || parsed.protocol === "postgresql:") {
+		return postgresDialTarget(parsed);
+	}
+	if (parsed.protocol === "mysql:" || parsed.protocol === "mysql2:") {
+		return mysqlDialTarget(parsed);
+	}
+	return null;
+}
+
+/**
+ * sqlx-postgres 0.9.1 (`options/mod.rs` `new_without_pgpass`,
+ * `options/parse.rs` `parse_from_url`, `connection/stream.rs` `connect`):
+ *
+ *   - the host starts as `PGHOST` (else a default socket directory or
+ *     `localhost`), the host address as `PGHOSTADDR` (ignored when it is not
+ *     an IP address);
+ *   - an authority host replaces the host, or sets the socket when it
+ *     decodes to a path (`/…`);
+ *   - the query is applied in order, so of two `host` the LAST one counts:
+ *     `host` sets the socket when it starts with `/`, the host otherwise;
+ *     `hostaddr` sets the host address (an invalid one fails the connect);
+ *     `socket` is a MySQL parameter it ignores;
+ *   - it connects to the socket when one is set or the host is a path, else
+ *     over TCP to the host address when set, else to the host.
+ */
+function postgresDialTarget(parsed: URL): DialTarget | null {
+	const envHost = process.env.PGHOST;
+	let host = envHost !== undefined && envHost.length > 0 ? envHost : null;
+	let hostaddr: string | null = null;
+	const envHostaddr = process.env.PGHOSTADDR;
+	if (envHostaddr !== undefined && envHostaddr.length > 0) {
+		// sqlx drops a PGHOSTADDR it cannot parse; a parser that disagrees
+		// with Rust's on some form must not let the gate look elsewhere.
+		if (isIP(envHostaddr) === 0) return null;
+		hostaddr = envHostaddr;
+	}
+	let socket = false;
+	if (parsed.hostname.length > 0) {
+		let decoded: string;
+		try {
+			decoded = decodeURIComponent(parsed.hostname);
+		} catch {
+			return null;
 		}
-		return {
-			local: false,
-			description: "a database host that is not loopback",
-		};
+		if (decoded.startsWith("/")) socket = true;
+		else host = parsed.hostname;
 	}
-	if (socketParam?.startsWith("/") === true) {
-		return { local: true, description: "a local database server" };
+	for (const [key, value] of parsed.searchParams) {
+		if (key === "host") {
+			if (value.startsWith("/")) socket = true;
+			else host = value;
+		} else if (key === "hostaddr") {
+			if (isIP(value) === 0) return null;
+			hostaddr = value;
+		}
 	}
-	// No authority host at all means the driver's default unix socket.
-	if (parsed.hostname.length === 0 || isLoopbackHost(parsed.hostname)) {
-		return { local: true, description: "a local database server" };
+	if (socket || host?.startsWith("/") === true) return { kind: "socket" };
+	// No host at all: sqlx's default, a local socket directory or localhost.
+	return { kind: "tcp", host: hostaddr ?? host ?? "localhost" };
+}
+
+/**
+ * sqlx-mysql 0.9.1 (`options/parse.rs`, `connection/establish.rs`): the
+ * authority host, else `localhost`; a `socket` parameter (the last one)
+ * switches to that unix socket; `host` is not a MySQL parameter and is
+ * ignored.
+ */
+function mysqlDialTarget(parsed: URL): DialTarget | null {
+	let socket: string | null = null;
+	for (const [key, value] of parsed.searchParams) {
+		if (key === "socket") socket = value;
 	}
-	return { local: false, description: "a database host that is not loopback" };
+	if (socket !== null) return socket.length > 0 ? { kind: "socket" } : null;
+	return {
+		kind: "tcp",
+		host: parsed.hostname.length > 0 ? parsed.hostname : "localhost",
+	};
 }
 
 function classifySqlite(

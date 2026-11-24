@@ -27,6 +27,13 @@ export interface WalkOptions {
 	projectRoot: string;
 	/** Directory names never entered. */
 	skipDirs?: ReadonlySet<string>;
+	/**
+	 * A finer skip rule: `true` leaves the directory `name` of `parent`
+	 * unvisited. Applied after `skipDirs`.
+	 */
+	skipDir?: (name: string, parent: string) => boolean;
+	/** Told of each directory left unvisited by `skipDirs`, `skipDir` or the dot rule. */
+	onSkipDir?: (path: string) => void;
 	/** Skip entries whose name starts with `.` (default true). */
 	skipDotEntries?: boolean;
 	/** Keep a file, given its name. */
@@ -90,8 +97,11 @@ function walkDir(dir: string, depth: number, state: WalkState): void {
 	}
 	for (const entry of entries) {
 		if (state.result.capped) return;
-		if (state.skipDot && entry.name.startsWith(".")) continue;
 		const full = join(dir, entry.name);
+		if (state.skipDot && entry.name.startsWith(".")) {
+			if (entry.isDirectory()) state.opts.onSkipDir?.(full);
+			continue;
+		}
 		let isDir = entry.isDirectory();
 		let isFile = entry.isFile();
 		if (entry.isSymbolicLink()) {
@@ -104,7 +114,13 @@ function walkDir(dir: string, depth: number, state: WalkState): void {
 			}
 		}
 		if (isDir) {
-			if (state.opts.skipDirs?.has(entry.name)) continue;
+			if (
+				state.opts.skipDirs?.has(entry.name) ||
+				state.opts.skipDir?.(entry.name, dir)
+			) {
+				state.opts.onSkipDir?.(full);
+				continue;
+			}
 			walkDir(full, depth + 1, state);
 			continue;
 		}

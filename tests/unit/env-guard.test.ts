@@ -14,6 +14,7 @@ import {
 	checkConsent,
 	classifyTarget,
 	detectEnv,
+	serverDialTarget,
 } from "../../src/util/env-guard.js";
 
 const VARS = [
@@ -21,6 +22,8 @@ const VARS = [
 	"NODE_ENV",
 	"REAM_MCP_ALLOW_MIGRATIONS",
 	"REAM_MCP_ALLOW_PRODUCTION_MIGRATIONS",
+	"PGHOST",
+	"PGHOSTADDR",
 ] as const;
 const saved = new Map<string, string | undefined>();
 
@@ -193,5 +196,128 @@ describe("classifyTarget", () => {
 			classifyTarget("sqlite://%2e%2e/outside/db.sqlite", project, project)
 				.local,
 		).toBe(false);
+	});
+});
+
+describe("classifyTarget reads a server URL as the driver (sqlx 0.9.1) does", () => {
+	const ROOT = "/srv/app";
+	const gate = (url: string, env: Record<string, string> = {}) => {
+		Object.assign(process.env, env);
+		process.env.REAM_MCP_ALLOW_MIGRATIONS = "1";
+		return authorizeWrite(classifyTarget(url, ROOT, ROOT));
+	};
+
+	it.each<[string, string, Record<string, string>]>([
+		[
+			"pg ?hostaddr=",
+			"postgres://app:pw@localhost:5432/shop?hostaddr=203.0.113.9",
+			{},
+		],
+		[
+			"pg ?host=localhost&hostaddr=",
+			"postgres:///shop?host=localhost&hostaddr=203.0.113.9",
+			{},
+		],
+		[
+			"pg PGHOST, no authority host",
+			"postgres:///shop",
+			{ PGHOST: "db.prod.internal" },
+		],
+		[
+			"pg PGHOSTADDR",
+			"postgres://app:pw@localhost/shop",
+			{ PGHOSTADDR: "203.0.113.9" },
+		],
+		[
+			"pg ?host= twice, the last one counts",
+			"postgres:///shop?host=localhost&host=db.prod.internal",
+			{},
+		],
+		[
+			"pg ?socket= (not a PostgreSQL parameter)",
+			"postgres://db.prod.internal/shop?socket=/tmp/x",
+			{},
+		],
+		[
+			"mysql ?host= (not a MySQL parameter)",
+			"mysql://app:pw@db.prod.internal/shop?host=localhost",
+			{},
+		],
+		[
+			"pg ?hostaddr= that is not an address",
+			"postgres://localhost/shop?hostaddr=db.prod",
+			{},
+		],
+		[
+			"pg PGHOSTADDR that is not an address",
+			"postgres://localhost/shop",
+			{ PGHOSTADDR: "db.prod" },
+		],
+		["mysql empty ?socket=", "mysql://localhost/shop?socket=", {}],
+	])("%s needs the production flag", (_label, url, env) => {
+		const res = gate(url, env);
+		expect(res.ok).toBe(false);
+		expect(res).toMatchObject({
+			error: "production migration writes are disabled for this server",
+		});
+	});
+
+	it.each<[string, string, Record<string, string>]>([
+		["pg no PGHOST", "postgres:///shop", {}],
+		[
+			"pg ?host= a socket directory",
+			"postgres:///shop?host=/var/run/postgresql",
+			{},
+		],
+		[
+			"pg PGHOST a socket directory",
+			"postgres:///shop",
+			{ PGHOST: "/var/run/postgresql" },
+		],
+		[
+			"pg ?hostaddr= loopback",
+			"postgres://db.example.com/shop?hostaddr=127.0.0.1",
+			{},
+		],
+		[
+			"pg PGHOSTADDR loopback over a remote PGHOST",
+			"postgres:///shop",
+			{ PGHOST: "db.prod", PGHOSTADDR: "::1" },
+		],
+		[
+			"pg a socket wins over hostaddr",
+			"postgres:///shop?hostaddr=203.0.113.9&host=/tmp",
+			{},
+		],
+		[
+			"pg the last host is loopback",
+			"postgres://db.prod/shop?host=db.other&host=127.0.0.1",
+			{},
+		],
+		[
+			"mysql ?socket= a relative path",
+			"mysql://db.prod/shop?socket=mysqld.sock",
+			{},
+		],
+	])("%s stays local", (_label, url, env) => {
+		expect(gate(url, env)).toEqual({ ok: true, production: false });
+	});
+
+	it("names where the driver dials", () => {
+		expect(
+			serverDialTarget("postgres://a/b?host=c&hostaddr=::1&host=d"),
+		).toEqual({
+			kind: "tcp",
+			host: "::1",
+		});
+		expect(serverDialTarget("postgres://%2Fvar%2Frun%2Fpostgresql/b")).toEqual({
+			kind: "socket",
+		});
+		expect(serverDialTarget("mysql:///b")).toEqual({
+			kind: "tcp",
+			host: "localhost",
+		});
+		expect(serverDialTarget("oracle://x/y")).toBeNull();
+		expect(serverDialTarget("not a url")).toBeNull();
 	});
 });

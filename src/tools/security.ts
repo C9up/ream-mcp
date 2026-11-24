@@ -1,10 +1,10 @@
 /**
- * `security.scan` MCP tool — Story 33.7.
+ * `security.scan` MCP tool.
  *
  * Targeted static-security scanner for Ream-specific anti-
  * patterns. Read-only, deterministic. Drives a single ts-morph
  * `Project` per dispatch and fans every eligible source file
- * across the seven check visitors.
+ * across the six check visitors.
  *
  * Heavy CJS imports (ts-morph) are dynamic-imported by the
  * server's `loadHandlers` Promise.all so the cold-boot path
@@ -13,9 +13,10 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 import { Project } from "ts-morph";
+import { readProjectFacts } from "../security/checks/_project.js";
 import type {
 	CheckContext,
 	CheckDefinition,
@@ -27,14 +28,9 @@ import { cookieMissingFlags } from "../security/checks/cookie_missing_flags.js";
 import { csrfDisabled } from "../security/checks/csrf_disabled.js";
 import { missingGuardOnMutationRoute } from "../security/checks/missing_guard_on_mutation_route.js";
 import { rawErrorNotReamerror } from "../security/checks/raw_error_not_reamerror.js";
-import {
-	reflectMetadataMissing,
-	resolveEntryFile,
-} from "../security/checks/reflect_metadata_missing.js";
 import { sqlInterpolation } from "../security/checks/sql_interpolation.js";
 import { xssHtmlRawOutput } from "../security/checks/xss_html_raw_output.js";
 import { walkProjectFiles } from "../util/fs-walk.js";
-import { walkWorkspacePackages } from "../util/package-walker.js";
 import {
 	SECURITY_CHECK_IDS,
 	type SecurityCheckId,
@@ -48,26 +44,28 @@ export {
 type Confidence = "high" | "medium" | "low";
 
 const FILE_CAP = 5000;
-const SKIP_DIRS = new Set([
+/** At most this many skipped directories are listed in the answer. */
+const SKIPPED_LIST_CAP = 100;
+/**
+ * Directories skipped at the top level of the application and of each
+ * package inside it (a directory holding a `package.json`): build output,
+ * dependencies, test suites and their fixtures, which hold anti-patterns on
+ * purpose. Deeper down, a directory of the same name is the application's
+ * own code (`app/modules/build/`) and is read.
+ */
+const PACKAGE_LEVEL_SKIPS = new Set([
 	"node_modules",
 	"dist",
 	"build",
-	".next",
-	".cache",
-	"coverage",
-	".git",
-	".turbo",
-	".svelte-kit",
-	"target",
 	"out",
-	"__tests__",
-	// Test fixtures intentionally contain anti-patterns (the
-	// `security-dirty/` fixture in this very repo would otherwise
-	// flood the dispatch with seeded findings). Spec scope cut.
+	"coverage",
+	"target",
+	"tmp",
 	"tests",
 	"test",
-	"e2e",
+	"__tests__",
 	"spec",
+	"e2e",
 	"fixtures",
 ]);
 const TEST_FILE_RE = /\.(?:test|spec|fixture)\.tsx?$/;
@@ -78,7 +76,6 @@ const CHECKS: CheckDefinition[] = [
 	csrfDisabled,
 	xssHtmlRawOutput,
 	cookieMissingFlags,
-	reflectMetadataMissing,
 	missingGuardOnMutationRoute,
 	rawErrorNotReamerror,
 ];
@@ -120,13 +117,37 @@ function shapeError(
 	return { error, hint, confidence: "low", knownGaps: [] };
 }
 
-function wrap<T extends Record<string, unknown>>(
-	body: T,
+/** What a scan read, so its reader can tell a clean scan from an empty one. */
+interface Scanned {
+	/** TypeScript files parsed. */
+	files: number;
+	/** `.inker` templates read. */
+	templates: number;
+	/** The top-level directories the files came from (`.` for the root itself). */
+	directories: string[];
+	/** Directories left unread, relative to the root (the first 100). */
+	skipped: string[];
+}
+
+/**
+ * `high` only for a scan that read something and has nothing to report as
+ * undecided: a scan of zero files is never `high`.
+ */
+function wrap(
+	findings: Finding[],
+	scanned: Scanned,
 	knownGaps: string[],
-): T & { confidence: Confidence; knownGaps: string[] } {
+): {
+	findings: Finding[];
+	scanned: Scanned;
+	confidence: Confidence;
+	knownGaps: string[];
+} {
+	const read = scanned.files + scanned.templates;
 	return {
-		...body,
-		confidence: knownGaps.length === 0 ? "high" : "medium",
+		findings,
+		scanned,
+		confidence: knownGaps.length === 0 && read > 0 ? "high" : "medium",
 		knownGaps,
 	};
 }
@@ -139,13 +160,17 @@ async function runScan(
 	if ("error" in selection) return shapeError(selection.error, selection.hint);
 
 	const knownGaps: string[] = [];
-	const files = collectFiles(root, knownGaps);
-	if (files.length === 0) {
-		const findings: Finding[] = [];
-		return wrap({ findings }, ["no source files found", ...knownGaps]);
-	}
-
-	const entryFile = resolveEntryFile((rel) => existsSync(join(root, rel)));
+	const walk = collectFiles(root, knownGaps);
+	const files = walk.files;
+	const facts = readProjectFacts(root);
+	const findings: Finding[] = [];
+	const scanned: Scanned = {
+		files: 0,
+		templates: 0,
+		directories: topLevelDirectories(root, files),
+		skipped: walk.skipped,
+	};
+	if (files.length === 0) knownGaps.push("no source files found");
 
 	const project = new Project({
 		skipFileDependencyResolution: true,
@@ -153,7 +178,11 @@ async function runScan(
 		useInMemoryFileSystem: false,
 	});
 
-	const findings: Finding[] = [];
+	const selected = selection.checks.flatMap((id) => {
+		const def = CHECK_BY_ID.get(id);
+		return def ? [def] : [];
+	});
+	const relevant = new Map<SecurityCheckId, number>();
 	for (const file of files) {
 		let sf: import("ts-morph").SourceFile | null = null;
 		try {
@@ -164,23 +193,26 @@ async function runScan(
 			continue;
 		}
 		if (!sf) continue;
+		scanned.files++;
 		const ctx: CheckContext = {
 			sf,
 			relPath: toRel(root, file),
 			project,
 			root,
-			entryFile,
+			knownGaps,
+			facts,
 		};
-		for (const checkId of selection.checks) {
-			const def = CHECK_BY_ID.get(checkId);
-			if (!def) continue;
+		for (const def of selected) {
+			if (def.appliesTo?.(sf, ctx.relPath)) {
+				relevant.set(def.id, (relevant.get(def.id) ?? 0) + 1);
+			}
 			let raw: RawFinding[];
 			try {
 				raw = def.run(ctx);
 			} catch (err) {
 				const detail = err instanceof Error ? err.message : String(err);
 				knownGaps.push(
-					`check ${checkId} threw on ${toRel(root, file)}: ${detail}`,
+					`check ${def.id} threw on ${toRel(root, file)}: ${detail}`,
 				);
 				continue;
 			}
@@ -193,30 +225,50 @@ async function runScan(
 		project.removeSourceFile(sf);
 	}
 
+	for (const def of selected) {
+		if (!def.appliesTo || (relevant.get(def.id) ?? 0) > 0) continue;
+		const gap = def.nothingRead?.(facts) ?? null;
+		if (gap !== null) knownGaps.push(gap);
+	}
+
 	if (selection.checks.includes("xss_html_raw_output")) {
-		scanInkerTemplates(root, findings, knownGaps);
+		scanned.templates = scanInkerTemplates(root, findings, knownGaps);
 	}
 
 	findings.sort(compareFindings);
-	return wrap({ findings }, knownGaps);
+	return wrap(findings, scanned, knownGaps);
+}
+
+/** The first path segment of each file, `.` for a file at the root. */
+function topLevelDirectories(root: string, files: readonly string[]): string[] {
+	const dirs = new Set<string>();
+	for (const file of files) {
+		const rel = toRel(root, file);
+		const slash = rel.indexOf("/");
+		dirs.add(slash === -1 ? "." : rel.slice(0, slash));
+	}
+	return [...dirs].sort(compareAscii);
+}
+
+function compareAscii(a: string, b: string): number {
+	return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /**
- * Best-effort regex scan for raw-output `{{{ }}}` interpolations
- * inside inker templates. Walks `<root>/resources/templates/**\/*.inker`
- * and pushes one finding per matching line. Full AST parsing is parked
- * behind the `AST scanner` knownGap.
+ * Best-effort scan for inker's raw output `{{{ expr }}}` inside templates.
+ * Walks `<root>/resources/templates/**\/*.inker` (InkerProvider's default
+ * directory) and pushes one finding per line that prints raw. Skipped: a
+ * brace escaped as `\{{{` (printed literally) and template comments
+ * `{{-- … --}}`, which inker strips without parsing. Full AST parsing is
+ * parked behind the `knownGaps` entry this adds.
  */
 function scanInkerTemplates(
 	root: string,
 	findings: Finding[],
 	knownGaps: string[],
-): void {
-	// Ream templates live in `resources/templates` (InkerProvider's default)
-	// and carry the `.inker` extension. Both were wrong here, so this scanner
-	// had never opened a single template.
+): number {
 	const templatesDir = join(root, "resources", "templates");
-	if (!existsSync(templatesDir)) return;
+	if (!existsSync(templatesDir)) return 0;
 	knownGaps.push(
 		"template XSS scan is regex-based; an AST-based scanner would cover more",
 	);
@@ -226,7 +278,8 @@ function scanInkerTemplates(
 		maxFiles: FILE_CAP,
 	}).files;
 	const def = CHECK_BY_ID.get("xss_html_raw_output");
-	if (!def) return;
+	if (!def) return 0;
+	let read = 0;
 	for (const file of inkerFiles) {
 		let text: string;
 		try {
@@ -236,21 +289,38 @@ function scanInkerTemplates(
 			knownGaps.push(`failed to read ${toRel(root, file)}: ${detail}`);
 			continue;
 		}
+		read++;
 		const lines = text.split("\n");
-		for (const [i, raw] of lines.entries()) {
-			if (!raw.includes("{{{")) continue;
-			const trimmed = raw.replace(/\t/g, "    ").trim().replace(/\r$/, "");
+		for (const line of rawOutputLines(text)) {
+			const trimmed = (lines[line - 1] ?? "")
+				.replace(/\r$/, "")
+				.trim()
+				.replace(/\t/g, "    ");
 			const elided =
 				trimmed.length > 120 ? `${trimmed.slice(0, 119)}…` : trimmed;
 			findings.push(
 				hydrate(def, toRel(root, file), {
 					check: "xss_html_raw_output",
-					line: i + 1,
+					line,
 					excerpt: elided,
 				}),
 			);
 		}
 	}
+	return read;
+}
+
+/** The 1-based lines of an inker template that open a raw `{{{` output. */
+export function rawOutputLines(text: string): number[] {
+	// Blank out comments, keeping their newlines so line numbers hold.
+	const visible = text.replace(/\{\{--[\s\S]*?--\}\}/g, (comment) =>
+		comment.replace(/[^\n]/g, " "),
+	);
+	const lines: number[] = [];
+	for (const [i, raw] of visible.split("\n").entries()) {
+		if (/(^|[^\\])\{\{\{/.test(raw)) lines.push(i + 1);
+	}
+	return lines;
 }
 
 interface SelectionOk {
@@ -289,17 +359,44 @@ function parseChecks(
 	return { checks: [...seen] };
 }
 
-function collectFiles(root: string, knownGaps: string[]): string[] {
-	const packages = walkWorkspacePackages(root);
-	const startDirs =
-		packages.length > 0
-			? packages.map((pkg) =>
-					existsSync(join(pkg.dir, "src")) ? join(pkg.dir, "src") : pkg.dir,
-				)
-			: [join(root, "src")];
-	const walked = walkProjectFiles(startDirs, {
+interface Collected {
+	files: string[];
+	/** Skipped directories, relative to the root, sorted, capped. */
+	skipped: string[];
+}
+
+/**
+ * Every TypeScript file of the application: the whole root, so `app/`,
+ * `start/`, `config/`, `providers/`, `commands/`, `bin/`, a `src/` and the
+ * packages it holds are all read, whatever else sits next to them.
+ * {@link PACKAGE_LEVEL_SKIPS} applies at the top of the root and of each
+ * package; dot directories and `node_modules` are skipped at any depth. A
+ * directory skipped below a package's top level is application code left
+ * unread, and goes to `knownGaps`.
+ */
+function collectFiles(root: string, knownGaps: string[]): Collected {
+	const packageRoots = new Map<string, boolean>();
+	const isPackageRoot = (dir: string): boolean => {
+		let known = packageRoots.get(dir);
+		if (known === undefined) {
+			known = dir === root || existsSync(join(dir, "package.json"));
+			packageRoots.set(dir, known);
+		}
+		return known;
+	};
+	const skipped: string[] = [];
+	const walked = walkProjectFiles([root], {
 		projectRoot: root,
-		skipDirs: SKIP_DIRS,
+		skipDir: (name, parent) =>
+			name === "node_modules" ||
+			(PACKAGE_LEVEL_SKIPS.has(name) && isPackageRoot(parent)),
+		onSkipDir: (path) => {
+			const rel = toRel(root, path);
+			skipped.push(rel);
+			if (!isPackageRoot(dirname(path))) {
+				knownGaps.push(`directory not scanned: ${rel}`);
+			}
+		},
 		accept: (name) =>
 			TS_FILE_RE.test(name) &&
 			!name.endsWith(".d.ts") &&
@@ -308,10 +405,15 @@ function collectFiles(root: string, knownGaps: string[]): string[] {
 	});
 	if (walked.capped) {
 		knownGaps.push(
-			`file walk capped at ${FILE_CAP} files; refine workspace layout to scan everything`,
+			`file walk capped at ${FILE_CAP} files; the files after it were not scanned`,
 		);
 	}
-	return walked.files;
+	skipped.sort(compareAscii);
+	const listed = skipped.slice(0, SKIPPED_LIST_CAP);
+	if (skipped.length > listed.length) {
+		listed.push(`… ${skipped.length - listed.length} more`);
+	}
+	return { files: walked.files, skipped: listed };
 }
 
 function toRel(root: string, abs: string): string {

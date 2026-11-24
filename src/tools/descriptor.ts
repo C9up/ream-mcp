@@ -40,3 +40,16 @@ export const DESTRUCTIVE: ToolAnnotations = {
 	idempotentHint: false,
 	openWorldHint: false,
 };
+
+/**
+ * Imports and runs code the project supplies (a dependency from its
+ * `node_modules`, its templates' expressions). Nothing bounds what that code
+ * does, so the tool cannot claim to be read-only, idempotent or closed to
+ * the outside world, whatever its own intent.
+ */
+export const RUNS_PROJECT_CODE: ToolAnnotations = {
+	readOnlyHint: false,
+	destructiveHint: true,
+	idempotentHint: false,
+	openWorldHint: true,
+};

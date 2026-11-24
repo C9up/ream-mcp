@@ -39,6 +39,31 @@ ream mcp install                     # writes `npx --no @c9up/ream-mcp`
 
 `--no` runs the version the project's lockfile pins and never downloads one.
 
+### Native engine
+
+The server's core is Rust. Each platform's engine is its own npm package, which `@c9up/ream-mcp` lists as an optional dependency at its exact version:
+
+| Platform | Package |
+|---|---|
+| Linux x64 (glibc) | `@c9up/ream-mcp-linux-x64-gnu` |
+| Linux arm64 (glibc) | `@c9up/ream-mcp-linux-arm64-gnu` |
+| macOS x64 | `@c9up/ream-mcp-darwin-x64` |
+| macOS arm64 | `@c9up/ream-mcp-darwin-arm64` |
+| Windows x64 | `@c9up/ream-mcp-win32-x64-msvc` |
+
+Your package manager installs only the one that matches the machine (`os`, `cpu` and `libc` fields), so an install downloads one binary and needs no Rust toolchain. An install run with optional dependencies omitted (`--no-optional`, `--omit=optional`) skips it.
+
+If the engine is missing, importing `@c9up/ream-mcp/napi` throws `E_REAM_MCP_NATIVE_LOAD_FAILED`, naming the package to install:
+
+```text
+ream-mcp: cannot load the native binary '@c9up/ream-mcp-linux-x64-gnu' (MODULE_NOT_FOUND).
+  Fix: install @c9up/ream-mcp-linux-x64-gnu at the exact version of @c9up/ream-mcp: ...
+```
+
+The load error itself is the exception's `cause`.
+
+In a checkout of this repository, `pnpm build:napi` builds `index.<platform>.node` at the package root, and the loader uses that file before looking for the platform package. `node scripts/platform-packages.mjs` rewrites the platform packages' manifests (`npm/<platform>/package.json`) and the optional dependencies after a version bump; CI fails when they are stale.
+
 The server auto-detects the Ream project root by walking up from
 `cwd` and checking for, in order:
 
@@ -47,6 +72,10 @@ The server auto-detects the Ream project root by walking up from
 3. `package.json` containing `@c9up/ream` in deps
 
 Set `REAM_PROJECT_ROOT=/path/to/project` to override.
+
+A root found above `cwd` must be owned by the current user and not writable by
+group or others (git's `safe.directory` rule); otherwise the server refuses it
+with `E_REAM_MCP_PROJECT_ROOT_NOT_FOUND`.
 
 ## Embeddings are opt-in
 

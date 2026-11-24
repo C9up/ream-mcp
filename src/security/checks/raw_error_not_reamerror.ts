@@ -8,21 +8,22 @@
  * produce a consistent JSON response. A raw `Error` slips through as a
  * 500 with no code.
  *
- * Visits every `NewExpression` whose callee is the bare `Error`
- * identifier (per the spec wording — both `throw new Error()`
- * and `const e = new Error(); throw e;` patterns are flagged).
+ * Visits every `new Error(...)` and `Error(...)` (both `throw new Error()`
+ * and `const e = new Error(); throw e;` are flagged).
  *
- * Scope: only files matching `**\/controllers/**\/*.ts` OR
- * containing a class decorated with `@Controller` / `@inject` /
- * `@Service`. Services, utility functions, and tests are
- * intentionally not flagged (story scope cut).
+ * Scope: controllers, as a Ream application lays them out: a file under a
+ * `controllers/` directory (`app/controllers/`,
+ * `app/modules/<module>/controllers/`), or named `*_controller.ts` /
+ * `*Controller.ts`. Services, middleware, utilities and tests are not
+ * flagged. Ream has no `@Controller` decorator, and `@inject()` / `@Service()`
+ * mark services as much as controllers, so decorators do not decide it.
  */
 
 import { Node } from "ts-morph";
 import { excerpt, lineOf } from "./_helpers.js";
 import type { CheckDefinition, RawFinding } from "./_types.js";
 
-const CONTROLLER_DECORATORS = new Set(["Controller", "inject", "Service"]);
+const CONTROLLER_FILE = /(?:^|\/)[^/]*(?:_controller|Controller)\.tsx?$/;
 
 export const rawErrorNotReamerror: CheckDefinition = {
 	id: "raw_error_not_reamerror",
@@ -30,10 +31,10 @@ export const rawErrorNotReamerror: CheckDefinition = {
 	hint: "declare the error with `createError()` (or an `Exception` subclass) from `@c9up/ream` and throw it instead of `new Error(...)`, so the response carries its code and the right status.",
 	docsUrl: "https://reamjs.com/en/guides/basics/exception-handling",
 	run(ctx) {
-		if (!isControllerFile(ctx)) return [];
+		if (!isControllerFile(ctx.relPath)) return [];
 		const findings: RawFinding[] = [];
 		ctx.sf.forEachDescendant((node) => {
-			if (!Node.isNewExpression(node)) return;
+			if (!Node.isNewExpression(node) && !Node.isCallExpression(node)) return;
 			const ctor = node.getExpression();
 			if (!Node.isIdentifier(ctor)) return;
 			if (ctor.getText() !== "Error") return;
@@ -48,13 +49,11 @@ export const rawErrorNotReamerror: CheckDefinition = {
 	},
 };
 
-function isControllerFile(ctx: import("./_types.js").CheckContext): boolean {
-	const norm = ctx.relPath.replace(/\\/g, "/");
-	if (norm.includes("/controllers/")) return true;
-	for (const cls of ctx.sf.getClasses()) {
-		for (const dec of cls.getDecorators()) {
-			if (CONTROLLER_DECORATORS.has(dec.getName())) return true;
-		}
-	}
-	return false;
+function isControllerFile(relPath: string): boolean {
+	const norm = relPath.replace(/\\/g, "/");
+	return (
+		norm.startsWith("controllers/") ||
+		norm.includes("/controllers/") ||
+		CONTROLLER_FILE.test(norm)
+	);
 }

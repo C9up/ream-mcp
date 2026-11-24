@@ -167,3 +167,93 @@ describe("inker.render_test > engine source", () => {
 		expect(res.hint).toMatch(/ream add/);
 	});
 });
+
+/**
+ * A package shaped like every published `@c9up/*` one: `type: module` and an
+ * export map with an `import` condition only, which a `require`-based
+ * resolution cannot load.
+ */
+function installEsmOnlyInker(body: string): void {
+	const dir = join(tmpRoot, "node_modules/@c9up/inker");
+	mkdirSync(join(dir, "dist"), { recursive: true });
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({
+			name: "@c9up/inker",
+			version: "0.0.0",
+			type: "module",
+			exports: {
+				".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
+			},
+		}),
+	);
+	writeFileSync(join(dir, "dist/index.js"), body);
+}
+
+describe("inker tools > loading the project's inker as the application imports it", () => {
+	it("loads a package whose export map has an import condition only", async () => {
+		installEsmOnlyInker(`
+			export class Templates {
+				constructor(opts) { this.root = opts.root }
+				compileRaw(source, name) {
+					if (source.includes("@if") && !source.includes("@endif")) {
+						throw Object.assign(new Error("Unclosed @if in " + name), { code: "E_INKER_UNCLOSED_BLOCK_TAG" });
+					}
+				}
+				async render(name) { return "esm " + name }
+			}
+		`);
+		writeFileSync(join(tmpRoot, "resources/templates/bad.inker"), "@if(x)");
+		const lint = (await dispatchInker(tmpRoot, "inker.list_templates", {
+			lint: true,
+		})) as ListResult;
+		expect(lint.knownGaps).toEqual([]);
+		expect(defined(lint.templates[0]).error?.code).toBe(
+			"E_INKER_UNCLOSED_BLOCK_TAG",
+		);
+		const render = (await dispatchInker(tmpRoot, "inker.render_test", {
+			template: "bad",
+		})) as { html?: string };
+		expect(render.html).toBe("esm bad");
+	});
+
+	it("says why an installed inker cannot be loaded, instead of 'run pnpm install'", async () => {
+		const dir = join(tmpRoot, "node_modules/@c9up/inker");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			join(dir, "package.json"),
+			JSON.stringify({
+				name: "@c9up/inker",
+				exports: { ".": { require: "./index.cjs" } },
+			}),
+		);
+		writeFileSync(join(tmpRoot, "resources/templates/a.inker"), "hi");
+		const render = (await dispatchInker(tmpRoot, "inker.render_test", {
+			template: "a",
+		})) as { error?: string; hint?: string };
+		expect(render.error).toBe(
+			"Failed to load @c9up/inker from the project: it is installed but its export map has no `.` entry for the import condition",
+		);
+		expect(render.hint).not.toMatch(/ream add|pnpm install/);
+
+		writeFileSync(
+			join(dir, "package.json"),
+			JSON.stringify({ name: "@c9up/inker", exports: "./missing.js" }),
+		);
+		const lint = (await dispatchInker(tmpRoot, "inker.list_templates", {
+			lint: true,
+		})) as ListResult;
+		expect(lint.knownGaps).toEqual([
+			"lint requested but @c9up/inker could not be loaded from the project (it is installed but its entry './missing.js' does not exist) — templates are listed without a syntax check.",
+		]);
+	});
+
+	it("reports an import that throws with its error", async () => {
+		installEsmOnlyInker("throw new Error('boom at load')");
+		writeFileSync(join(tmpRoot, "resources/templates/a.inker"), "hi");
+		const render = (await dispatchInker(tmpRoot, "inker.render_test", {
+			template: "a",
+		})) as { error?: string };
+		expect(render.error).toMatch(/importing it failed: .*boom at load/);
+	});
+});

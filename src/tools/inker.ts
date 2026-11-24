@@ -1,8 +1,10 @@
 /**
  * `inker.*` MCP tools.
  *
- * Two read-only / sandboxed tools that surface @c9up/inker state
- * without booting the host app:
+ * Two tools that surface @c9up/inker state without booting the host app.
+ * Neither is read-only: the lint and the render import the PROJECT's
+ * `@c9up/inker` into this process and run it (and a render runs the
+ * template's expressions), so both are annotated as running project code.
  *
  *   - `inker.list_templates` — walks the templates root, optionally
  *     parsing each file to surface lex/parse errors per template.
@@ -17,8 +19,7 @@
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { createRequire } from "node:module";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -29,6 +30,7 @@ import {
 } from "../util/containment.js";
 import { walkProjectFiles } from "../util/fs-walk.js";
 import { isRecord } from "../util/guards.js";
+import { resolveProjectPackage } from "../util/project-package.js";
 import { redactPaths } from "../util/redact.js";
 import { INKER_TOOLS, isInkerTool } from "./inker.descriptors.js";
 
@@ -157,12 +159,12 @@ async function listTemplates(
 	let compile: ((source: string, name?: string) => void) | undefined;
 	if (lint) {
 		const loaded = await loadProjectInker(projectRoot, templatesRoot);
-		if (loaded === null) {
+		if ("failure" in loaded) {
 			knownGaps.push(
-				"lint requested but @c9up/inker could not be loaded from the project — templates are listed without a syntax check.",
+				`lint requested but @c9up/inker could not be loaded from the project (${loaded.failure}) — templates are listed without a syntax check.`,
 			);
 		} else {
-			compile = loaded;
+			compile = loaded.compile;
 		}
 	}
 	for (const abs of files) {
@@ -193,24 +195,32 @@ function isProjectEngine(value: unknown): value is ProjectEngine {
 	return isRecord(value);
 }
 
+type Loaded<T> = T | { failure: string };
+
 /**
  * A `compileRaw`-shaped syntax checker from the INSPECTED project's inker.
  *
  * Resolved against the project rather than this package: ream-mcp does not
  * depend on inker, and checking a template against a different version's
  * grammar than the app renders it with would report errors the app does not
- * have. Returns null when the project has no inker — the caller says so in
- * `knownGaps` instead of reporting a clean bill of health it never checked.
+ * have. A failure says why (not installed, no import entry, the import
+ * threw) — the caller puts it in `knownGaps` instead of reporting a clean
+ * bill of health it never checked.
  */
 async function loadProjectInker(
 	projectRoot: string,
 	templatesRoot: string,
-): Promise<((source: string, name?: string) => void) | null> {
+): Promise<Loaded<{ compile: (source: string, name?: string) => void }>> {
 	const engine = await loadProjectEngine(projectRoot, templatesRoot);
-	if (engine === null || typeof engine.compileRaw !== "function") return null;
+	if ("failure" in engine) return engine;
+	if (typeof engine.compileRaw !== "function") {
+		return { failure: "its Templates has no compileRaw (an older inker)" };
+	}
 	const compileRaw = engine.compileRaw.bind(engine);
-	return (source, name) => {
-		compileRaw(source, name);
+	return {
+		compile: (source, name) => {
+			compileRaw(source, name);
+		},
 	};
 }
 
@@ -218,14 +228,19 @@ async function loadProjectInker(
 async function loadProjectRenderer(
 	projectRoot: string,
 	templatesRoot: string,
-): Promise<{
-	render(
-		name: string,
-		data: Readonly<Record<string, unknown>>,
-	): Promise<string>;
-} | null> {
+): Promise<
+	Loaded<{
+		render(
+			name: string,
+			data: Readonly<Record<string, unknown>>,
+		): Promise<string>;
+	}>
+> {
 	const engine = await loadProjectEngine(projectRoot, templatesRoot);
-	if (engine === null || typeof engine.render !== "function") return null;
+	if ("failure" in engine) return engine;
+	if (typeof engine.render !== "function") {
+		return { failure: "its Templates has no render" };
+	}
 	const render = engine.render.bind(engine);
 	return {
 		render: (name, data) => Promise.resolve(render(name, data)),
@@ -234,29 +249,45 @@ async function loadProjectRenderer(
 
 /**
  * A `Templates` instance from the INSPECTED project, rooted at its templates
- * directory. Returns null when the project has no inker, an older one, or a
- * native binary it cannot load — every caller reports that rather than
- * treating it as "nothing to report".
+ * directory. The package is found under the `import` condition, as the
+ * application itself imports it (`../util/project-package.ts`); importing it
+ * runs its code in this process, which is why neither inker tool is
+ * annotated read-only.
  */
 async function loadProjectEngine(
 	projectRoot: string,
 	templatesRoot: string,
-): Promise<ProjectEngine | null> {
+): Promise<Loaded<ProjectEngine>> {
+	const entry = resolveProjectPackage(projectRoot, "@c9up/inker");
+	if (entry.kind === "missing") {
+		return { failure: "it is not installed in node_modules" };
+	}
+	if (entry.kind === "unresolvable") {
+		return { failure: `it is installed but ${entry.reason}` };
+	}
+	let mod: unknown;
 	try {
-		const require = createRequire(join(projectRoot, "package.json"));
-		const entry = require.resolve("@c9up/inker");
-		const mod: unknown = await import(pathToFileURL(entry).href);
-		if (!isRecord(mod)) return null;
-		const TemplatesCtor = mod.Templates;
-		if (typeof TemplatesCtor !== "function") return null;
-		const engine: unknown = Reflect.construct(TemplatesCtor, [
+		mod = await import(pathToFileURL(entry.path).href);
+	} catch (err) {
+		const code = isRecord(err) && typeof err.code === "string" ? err.code : "";
+		const message = err instanceof Error ? err.message : String(err);
+		return {
+			failure: `importing it failed: ${redactPaths(code ? `${code} ${message}` : message)}`,
+		};
+	}
+	if (!isRecord(mod) || typeof mod.Templates !== "function") {
+		return { failure: "it exports no Templates class" };
+	}
+	try {
+		const engine: unknown = Reflect.construct(mod.Templates, [
 			{ root: templatesRoot },
 		]);
-		return isProjectEngine(engine) ? engine : null;
-	} catch {
-		// No inker in the project, an older one without compileRaw, or a native
-		// binary it cannot load. Reported as a gap, never as "no errors".
-		return null;
+		return isProjectEngine(engine)
+			? engine
+			: { failure: "its Templates did not construct an object" };
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		return { failure: `new Templates() threw: ${redactPaths(message)}` };
 	}
 }
 
@@ -393,10 +424,12 @@ async function renderTest(
 	// on inker, and rendering against a different version's engine than the app
 	// uses would report failures the app does not have.
 	const renderer = await loadProjectRenderer(projectRoot, templatesRoot);
-	if (renderer === null) {
+	if ("failure" in renderer) {
 		return shapeError(
-			"Failed to load @c9up/inker from the project",
-			"Run `pnpm install` (or `ream add @c9up/inker`) in the project before invoking this tool.",
+			`Failed to load @c9up/inker from the project: ${renderer.failure}`,
+			renderer.failure === "it is not installed in node_modules"
+				? "Install it in the project (`ream add @c9up/inker`) before invoking this tool."
+				: "The project's @c9up/inker cannot be imported as the application imports it; reinstall it or upgrade it.",
 		);
 	}
 	const tpl = renderer;

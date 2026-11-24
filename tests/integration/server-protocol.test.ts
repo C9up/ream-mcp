@@ -114,12 +114,20 @@ describe("tools/list annotations", () => {
 			"security.scan",
 			"doctor.health",
 			"bmad.trace",
-			"inker.list_templates",
 			"quality.dep_graph",
 			// Never creates the tracking table: a status read changes nothing.
 			"migration.status",
 		]) {
 			expect(byName.get(name)?.annotations?.readOnlyHint, name).toBe(true);
+		}
+	});
+
+	it("does not mark the inker tools read-only: they import and run the project's inker", async () => {
+		const tools = await listTools();
+		const byName = new Map(tools.map((t) => [t.name, t]));
+		for (const name of ["inker.list_templates", "inker.render_test"]) {
+			expect(byName.get(name)?.annotations?.readOnlyHint, name).toBe(false);
+			expect(byName.get(name)?.annotations?.destructiveHint, name).toBe(true);
 		}
 	});
 
