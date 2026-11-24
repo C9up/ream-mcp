@@ -5,8 +5,10 @@ export default defineConfig({
 		include: ["tests/**/*.test.ts"],
 		exclude: ["**/node_modules/**", "tests/fixtures/**"],
 		// Integration tests spawn child processes — give them headroom
-		// over the default 5s timeout for stdio bring-up.
-		testTimeout: 15_000,
+		// over the default 5s timeout for stdio bring-up. The Windows runners
+		// are several times slower at it (process spawn, the native atlas
+		// engine loaded cold): two suites passed 15 s there and nowhere else.
+		testTimeout: process.platform === "win32" ? 60_000 : 15_000,
 		coverage: {
 			provider: "v8",
 			include: ["src/**"],
