@@ -88,7 +88,9 @@ async function applyMigrations(): Promise<void> {
 	});
 }
 
-describe("migration > rollback", () => {
+// The first call loads atlas's engine and opens SQLite cold: on the Windows
+// runners that alone can pass the suite's 15 s default.
+describe("migration > rollback", { timeout: 60_000 }, () => {
 	it("returns wouldRollback with reverse SQL for the last batch (dry-run)", async () => {
 		await applyMigrations();
 		const result = (await dispatchMigration(tmpDbDir, "migration.rollback", {
